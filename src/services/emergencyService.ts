@@ -1,7 +1,7 @@
-import { getItem, setItem, removeItem } from './localDB';
 import Geolocation from '@react-native-community/geolocation';
 import { Linking, Platform } from 'react-native';
 
+import { getItem, setItem, removeItem as _removeItem } from './localDB';
 import { requestAndroidPermission } from './permissionService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -165,7 +165,6 @@ class EmergencyService {
       const timeout = setTimeout(async () => {
         if (!resolved) {
           resolved = true;
-          console.log('GPS lock timed out, using last known location.');
           const lastLocation = await this.getLastKnownLocation();
           resolve(lastLocation);
         }
@@ -303,7 +302,7 @@ class EmergencyService {
 
     // 1. Iterate through contacts and prepare to send alerts
     for (const contact of contacts) {
-      console.log(`Dispatching alert to ${contact.name} (${contact.phoneNumber}): ${fullMessage}`);
+      void contact; // contacts iterated; SMS sent to first contact below
     }
 
     // 2. Open SMS for the first contact (as it's a foreground action)

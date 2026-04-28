@@ -37,7 +37,7 @@ export function logError(error: Error, context?: ErrorContext): void {
 
   // Dev logging
   if (isDev) {
-    console.error("🚨 Error Logged:", log);
+    console.error('🚨 Error Logged:', log);
   }
 
   // Send to external service (mock for now)
@@ -45,8 +45,7 @@ export function logError(error: Error, context?: ErrorContext): void {
 }
 
 function sendToService(log: LoggedError, frequency: number): void {
-  console.log("📡 Sending error to service:", {
-    ...log,
-    frequency,
-  });
+  void log;
+  void frequency;
+  // TODO: replace with real Sentry/Datadog call in production
 }

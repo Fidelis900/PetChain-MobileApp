@@ -57,11 +57,12 @@ export const applySchemaMapping = (response: AxiosResponse): AxiosResponse => {
   // Find a matching mapper for the URL
   // (Simplistic matching for demo: exact match or startsWith)
   const mapperKey = Object.keys(mappers).find(
-    (key) => url.endsWith(key) || (key.includes(':id') && url.match(new RegExp(key.replace(':id', '[^/]+'))))
+    (key) =>
+      url.endsWith(key) ||
+      (key.includes(':id') && url.match(new RegExp(key.replace(':id', '[^/]+')))),
   );
 
   if (mapperKey && data) {
-    console.log(`[SchemaMapper] Applying mapper for ${mapperKey}`);
     response.data = mappers[mapperKey](data);
   }
 
