@@ -11,11 +11,18 @@ import {
 } from 'react-native';
 
 import {
-  generatePetQRCode,
   generatePetShareLink,
   nativeSharePetProfile,
   PetSharingError,
 } from '../services/petProfileSharingService';
+import { getPetById } from '../services/petService';
+import {
+  generateQR,
+  getQRImageUrl,
+  printPetQRCode,
+  sharePetQRCode,
+  type PetQRInput,
+} from '../services/qrCodeService';
 
 interface Props {
   petId: string;
@@ -23,11 +30,23 @@ interface Props {
   onBack: () => void;
 }
 
-type LoadingAction = 'link' | 'social' | 'qr' | null;
+type LoadingAction = 'link' | 'social' | 'qr' | 'qr-share' | 'print' | null;
 
 const PetShareScreen: React.FC<Props> = ({ petId, petName, onBack }) => {
   const [loading, setLoading] = useState<LoadingAction>(null);
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [qrPayload, setQrPayload] = useState<string | null>(null);
+  const [qrImageUrl, setQrImageUrl] = useState<string | null>(null);
+
+  const loadPetQRInput = async (): Promise<PetQRInput> => {
+    const pet = await getPetById(petId);
+    return {
+      id: pet.id,
+      name: pet.name,
+      species: pet.species as PetQRInput['species'],
+      breed: pet.breed,
+      microchipId: pet.microchipId,
+    };
+  };
 
   const handleShareLink = async () => {
     setLoading('link');
@@ -66,14 +85,40 @@ const PetShareScreen: React.FC<Props> = ({ petId, petName, onBack }) => {
   const handleQRCode = async () => {
     setLoading('qr');
     try {
-      const { qrDataUrl: dataUrl } = await generatePetQRCode(petId);
-      setQrDataUrl(dataUrl);
-    } catch (error) {
-      const msg =
-        error instanceof PetSharingError && error.code === 'FORBIDDEN'
-          ? 'You do not have permission to share this pet profile.'
-          : 'Failed to generate QR code. Please try again.';
-      Alert.alert('Error', msg);
+      const pet = await loadPetQRInput();
+      const payload = await generateQR(pet);
+      setQrPayload(payload);
+      setQrImageUrl(getQRImageUrl(payload));
+    } catch {
+      Alert.alert('Error', 'Failed to generate QR code. Please try again.');
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleShareQRCode = async () => {
+    setLoading('qr-share');
+    try {
+      const pet = await loadPetQRInput();
+      const payload = await sharePetQRCode(pet);
+      setQrPayload(payload);
+      setQrImageUrl(getQRImageUrl(payload));
+    } catch {
+      Alert.alert('Error', 'Failed to share QR code. Please try again.');
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handlePrintQRCode = async () => {
+    setLoading('print');
+    try {
+      const pet = await loadPetQRInput();
+      const payload = await printPetQRCode(pet);
+      setQrPayload(payload);
+      setQrImageUrl(getQRImageUrl(payload));
+    } catch {
+      Alert.alert('Error', 'Failed to prepare QR code for printing. Please try again.');
     } finally {
       setLoading(null);
     }
@@ -163,24 +208,43 @@ const PetShareScreen: React.FC<Props> = ({ petId, petName, onBack }) => {
         </TouchableOpacity>
 
         {/* QR Code Preview */}
-        {qrDataUrl && (
+        {qrPayload && qrImageUrl && (
           <View style={styles.qrContainer} accessibilityLabel={`QR code for ${petName}'s profile`}>
             <Text style={styles.qrLabel}>Scan to view {petName}'s profile</Text>
             <Image
-              source={{ uri: qrDataUrl }}
+              source={{ uri: qrImageUrl }}
               style={styles.qrImage}
               accessible
               accessibilityLabel="QR code"
             />
+            <Text style={styles.qrPayload} selectable numberOfLines={6}>
+              {qrPayload}
+            </Text>
             <TouchableOpacity
               style={styles.qrShareBtn}
-              onPress={async () => {
-                await nativeSharePetProfile(qrDataUrl, petName);
-              }}
+              onPress={handleShareQRCode}
+              disabled={loading !== null}
               accessibilityRole="button"
               accessibilityLabel="Share QR code"
             >
-              <Text style={styles.qrShareBtnText}>Share QR Code</Text>
+              {isLoading('qr-share') ? (
+                <ActivityIndicator size="small" color="#4CAF50" />
+              ) : (
+                <Text style={styles.qrShareBtnText}>Share QR Code</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.qrShareBtn}
+              onPress={handlePrintQRCode}
+              disabled={loading !== null}
+              accessibilityRole="button"
+              accessibilityLabel="Print QR code"
+            >
+              {isLoading('print') ? (
+                <ActivityIndicator size="small" color="#4CAF50" />
+              ) : (
+                <Text style={styles.qrShareBtnText}>Print QR Code</Text>
+              )}
             </TouchableOpacity>
           </View>
         )}
@@ -246,12 +310,22 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   qrLabel: { fontSize: 14, color: '#666', marginBottom: 16 },
-  qrImage: { width: 200, height: 200, marginBottom: 16 },
+  qrImage: { width: 220, height: 220, marginBottom: 12 },
+  qrPayload: {
+    width: '100%',
+    borderRadius: 8,
+    backgroundColor: '#f7f7f7',
+    color: '#333',
+    fontSize: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
   qrShareBtn: {
     backgroundColor: '#e8f5e9',
     borderRadius: 8,
     paddingHorizontal: 20,
     paddingVertical: 10,
+    marginTop: 8,
   },
   qrShareBtnText: { color: '#4CAF50', fontWeight: '700', fontSize: 14 },
   permissionNote: {

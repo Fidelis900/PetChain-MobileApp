@@ -1,4 +1,5 @@
 import CryptoJS from 'crypto-js';
+import { Share } from 'react-native';
 
 import type { Pet } from '../models/Pet';
 import {
@@ -21,6 +22,7 @@ export const QR_FORMAT_VERSION = 2;
 
 const QR_PREFIX = 'PETCHAIN_QR';
 const PET_ID_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
+const QR_IMAGE_BASE_URL = 'https://api.qrserver.com/v1/create-qr-code/';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,6 +56,8 @@ export interface QRScanResult {
   version?: number;
   error?: string;
 }
+
+export type PetQRInput = Pick<Pet, 'id' | 'name' | 'species' | 'breed' | 'microchipId'>;
 
 // ─── Checksum ─────────────────────────────────────────────────────────────────
 
@@ -105,6 +109,42 @@ export const generatePetQRCode = async (pet: Pet): Promise<string> => {
   await cacheQRPayload(pet.id, encoded);
 
   return encoded;
+};
+
+export const generateQR = async (petData: PetQRInput): Promise<string> => {
+  return generatePetQRCode({
+    ...petData,
+    ownerId: '',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+};
+
+export const getQRImageUrl = (qrData: string, size = 240): string => {
+  const clampedSize = Math.max(120, Math.min(size, 512));
+  return `${QR_IMAGE_BASE_URL}?size=${clampedSize}x${clampedSize}&data=${encodeURIComponent(qrData)}`;
+};
+
+export const sharePetQRCode = async (petData: PetQRInput): Promise<string> => {
+  const payload = await generateQR(petData);
+  const imageUrl = getQRImageUrl(payload);
+  await Share.share({
+    title: `${petData.name}'s PetChain QR`,
+    message: `PetChain QR for ${petData.name}:\n${imageUrl}`,
+    url: imageUrl,
+  });
+  return payload;
+};
+
+export const printPetQRCode = async (petData: PetQRInput): Promise<string> => {
+  const payload = await generateQR(petData);
+  const imageUrl = getQRImageUrl(payload);
+  await Share.share({
+    title: `Print ${petData.name}'s PetChain QR`,
+    message: `Print or save this PetChain QR for ${petData.name}:\n${imageUrl}`,
+    url: imageUrl,
+  });
+  return payload;
 };
 
 /**

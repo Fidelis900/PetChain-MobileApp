@@ -14,6 +14,9 @@ const ReactNative = {
     openURL: jest.fn().mockResolvedValue(true),
     canOpenURL: jest.fn().mockResolvedValue(true),
   },
+  Share: {
+    share: jest.fn().mockResolvedValue({ action: 'sharedAction' }),
+  },
   Platform: {
     OS: 'ios',
     select: (obj: Record<string, unknown>) => obj['ios'] ?? obj['default'],
