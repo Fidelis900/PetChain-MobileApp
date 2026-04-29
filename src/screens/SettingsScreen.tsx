@@ -27,7 +27,9 @@ import {
   promptForBiometricSetup,
 } from '../services/authService';
 import { getUserProfile, saveUserProfile, updateUserProfile } from '../services/userService';
+import { useAppTheme } from '../theme';
 import { formatAddress } from '../utils/localeValues';
+import { useTheme } from '../utils/useTheme';
 
 // ─── App version info ─────────────────────────────────────────────────────────
 // Pulled from expo-constants at runtime; fallback to package values.
@@ -113,6 +115,7 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ visible, emai
 const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
   const { t } = useTranslation();
   const { mode: themeMode, setMode: setThemeMode } = useTheme();
+  const colors = useAppTheme();
   const [_profile, setProfile] = useState<User | null>(null);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -182,7 +185,7 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
 
   const validateEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
-  const handleSaveProfile = useCallback(async () => {
+  const handleSaveProfile = async () => {
     if (!name.trim()) {
       Alert.alert(t('common.error'), t('settings.nameRequired'));
       return;
@@ -238,23 +241,7 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
     } finally {
       setProfileSaving(false);
     }
-  }, [
-    city,
-    contactEmail,
-    contactName,
-    contactPhone,
-    contactRelationship,
-    country,
-    email,
-    name,
-    phone,
-    postalCode,
-    profile,
-    profilePhoto,
-    state,
-    street,
-    t,
-  ]);
+  };
 
   // ── Notification toggle ────────────────────────────────────────────────────
 
@@ -324,14 +311,21 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
   // ── Render helpers ─────────────────────────────────────────────────────────
 
   const SectionHeader = ({ title }: { title: string }) => (
-    <Text style={styles.sectionHeader}>{title}</Text>
+    <Text style={[styles.sectionHeader, { color: colors.secondaryText }]}>{title}</Text>
   );
 
-  const RowSeparator = () => <View style={styles.separator} />;
+  const RowSeparator = () => (
+    <View style={[styles.separator, { backgroundColor: colors.border }]} />
+  );
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.screenTitle}>{t('settings.title')}</Text>
+    <ScrollView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      contentContainerStyle={styles.content}
+    >
+      <Text style={[styles.screenTitle, { color: colors.text }]}>
+        {t('settings.title', 'Settings')}
+      </Text>
 
       {/* ── Profile Settings ── */}
       <SectionHeader title={t('settings.profile')} />
@@ -487,11 +481,11 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
         ).map(({ key, label }, idx, arr) => (
           <React.Fragment key={key}>
             <View style={styles.row}>
-              <Text style={styles.rowLabel}>{label}</Text>
+              <Text style={[styles.rowLabel, { color: colors.text }]}>{label}</Text>
               <Switch
                 value={Boolean(notifPrefs[key])}
                 onValueChange={(v) => void handleNotifToggle(key, v)}
-                trackColor={{ false: '#ddd', true: '#4CAF50' }}
+                trackColor={{ false: colors.border, true: colors.primary }}
                 thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
                 disabled={notifSaving}
               />
@@ -503,24 +497,28 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
 
       {/* ── Security Settings ── */}
       <SectionHeader title={t('settings.security')} />
-      <View style={styles.card}>
+      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <TouchableOpacity style={styles.row} onPress={() => setShowChangePassword(true)}>
-          <Text style={styles.rowLabel}>{t('settings.changePassword')}</Text>
-          <Text style={styles.chevron}>›</Text>
+          <Text style={[styles.rowLabel, { color: colors.text }]}>
+            {t('settings.changePassword')}
+          </Text>
+          <Text style={[styles.chevron, { color: colors.placeholder }]}>›</Text>
         </TouchableOpacity>
 
         {biometricAvailable && (
           <>
             <RowSeparator />
             <View style={styles.row}>
-              <Text style={styles.rowLabel}>{t('settings.biometricLogin')}</Text>
+              <Text style={[styles.rowLabel, { color: colors.text }]}>
+                {t('settings.biometricLogin')}
+              </Text>
               {biometricLoading ? (
-                <ActivityIndicator size="small" color="#4CAF50" />
+                <ActivityIndicator size="small" color={colors.primary} />
               ) : (
                 <Switch
                   value={biometricEnabled}
                   onValueChange={(v) => void handleBiometricToggle(v)}
-                  trackColor={{ false: '#ddd', true: '#4CAF50' }}
+                  trackColor={{ false: colors.border, true: colors.primary }}
                   thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
                 />
               )}
@@ -531,7 +529,7 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
 
       {/* ── Theme ── */}
       <SectionHeader title={t('settings.theme', 'Theme')} />
-      <View style={styles.card}>
+      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         {(['system', 'light', 'dark'] as ThemeMode[]).map((option, idx, arr) => (
           <React.Fragment key={option}>
             <TouchableOpacity
@@ -540,7 +538,7 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
               accessibilityRole="radio"
               accessibilityState={{ checked: themeMode === option }}
             >
-              <Text style={styles.rowLabel}>
+              <Text style={[styles.rowLabel, { color: colors.text }]}>
                 {option === 'system'
                   ? t('settings.themeSystem', 'Follow system')
                   : option === 'light'
@@ -549,23 +547,23 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
               </Text>
               {themeMode === option && <Text style={styles.checkmark}>✓</Text>}
             </TouchableOpacity>
-            {idx < arr.length - 1 && <RowSeparator />}
+            {idx < arr.length - 1 && <RowSeparator style={{ backgroundColor: colors.border }} />}
           </React.Fragment>
         ))}
       </View>
 
       {/* ── Language ── */}
       <SectionHeader title={t('settings.language')} />
-      <View style={styles.card}>
+      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <LanguageSelector />
       </View>
 
       {/* ── App Information ── */}
       <SectionHeader title={t('settings.appInfo')} />
-      <View style={styles.card}>
+      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.row}>
-          <Text style={styles.rowLabel}>{t('settings.version')}</Text>
-          <Text style={styles.rowValue}>{APP_VERSION}</Text>
+          <Text style={[styles.rowLabel, { color: colors.text }]}>{t('settings.version')}</Text>
+          <Text style={[styles.rowValue, { color: colors.secondaryText }]}>{APP_VERSION}</Text>
         </View>
         <RowSeparator />
         <View style={styles.row}>
@@ -574,13 +572,17 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
         </View>
         <RowSeparator />
         <TouchableOpacity style={styles.row} onPress={() => void Linking.openURL(TERMS_URL)}>
-          <Text style={styles.rowLabel}>{t('settings.termsOfService')}</Text>
-          <Text style={styles.chevron}>›</Text>
+          <Text style={[styles.rowLabel, { color: colors.text }]}>
+            {t('settings.termsOfService')}
+          </Text>
+          <Text style={[styles.chevron, { color: colors.placeholder }]}>›</Text>
         </TouchableOpacity>
         <RowSeparator />
         <TouchableOpacity style={styles.row} onPress={() => void Linking.openURL(PRIVACY_URL)}>
-          <Text style={styles.rowLabel}>{t('settings.privacyPolicy')}</Text>
-          <Text style={styles.chevron}>›</Text>
+          <Text style={[styles.rowLabel, { color: colors.text }]}>
+            {t('settings.privacyPolicy')}
+          </Text>
+          <Text style={[styles.chevron, { color: colors.placeholder }]}>›</Text>
         </TouchableOpacity>
       </View>
 
@@ -615,7 +617,6 @@ const styles = StyleSheet.create({
   screenTitle: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#1a1a1a',
     marginBottom: 20,
   },
   sectionHeader: {
@@ -638,10 +639,10 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
+    borderWidth: 1,
   },
   label: {
     fontSize: 13,
-    color: '#666',
     marginTop: 12,
     marginBottom: 4,
   },
@@ -684,9 +685,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 14,
   },
-  rowLabel: { fontSize: 15, color: '#1a1a1a' },
-  rowValue: { fontSize: 15, color: '#888' },
-  chevron: { fontSize: 20, color: '#bbb' },
+  rowLabel: { fontSize: 15 },
+  rowValue: { fontSize: 15 },
+  chevron: { fontSize: 20 },
   checkmark: { fontSize: 16, color: '#4CAF50', fontWeight: '700' },
   separator: { height: 1, backgroundColor: '#f0f0f0' },
   notifLoader: { alignSelf: 'flex-end', marginBottom: 4 },
@@ -712,9 +713,9 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingBottom: Platform.OS === 'ios' ? 40 : 24,
   },
-  modalTitle: { fontSize: 20, fontWeight: '700', color: '#1a1a1a', marginBottom: 12 },
-  modalBody: { fontSize: 15, color: '#555', marginBottom: 6 },
-  modalEmail: { fontSize: 15, fontWeight: '600', color: '#1a1a1a', marginBottom: 20 },
+  modalTitle: { fontSize: 20, fontWeight: '700', marginBottom: 12 },
+  modalBody: { fontSize: 15, marginBottom: 6 },
+  modalEmail: { fontSize: 15, fontWeight: '600', marginBottom: 20 },
   cancelBtn: { paddingVertical: 12, alignItems: 'center', marginTop: 8 },
   cancelText: { color: '#888', fontSize: 15 },
 });

@@ -2,7 +2,9 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer, type LinkingOptions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
+import { StatusBar } from 'react-native';
 
+import { useNavigationTheme } from '../theme';
 import type { RootStackParamList, MainTabParamList, PetStackParamList } from './types';
 import { DEEP_LINK_PREFIX } from './types';
 import type { Pet } from '../models/Pet';
@@ -15,15 +17,15 @@ import MedicalRecordSearchScreen from '../screens/MedicalRecordSearchScreen';
 import MedicalRecordViewerScreen from '../screens/MedicalRecordViewerScreen';
 import MedicationScreen from '../screens/MedicationScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
+import PaymentScreen from '../screens/PaymentScreen';
 import PetDetailScreen from '../screens/PetDetailScreen';
-import PetShareScreen from '../screens/PetShareScreen';
 import PetFormScreen from '../screens/PetFormScreen';
 import PetHealthDashboardScreen from '../screens/PetHealthDashboardScreen';
 import PetHealthMetricsScreen from '../screens/PetHealthMetricsScreen';
 import PetListScreen from '../screens/PetListScreen';
+import PetShareScreen from '../screens/PetShareScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import QRScannerScreen from '../screens/QRScannerScreen';
-import PaymentScreen from '../screens/PaymentScreen';
 import analyticsService from '../services/analyticsService';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
@@ -61,7 +63,12 @@ function PetNavigator() {
             petId={route.params.petId}
             petName={route.params.petName ?? 'Pet'}
             onBack={() => navigation.goBack()}
-            onOpenMetrics={() => navigation.navigate('PetHealthMetrics', { petId: route.params.petId, petName: route.params.petName })}
+            onOpenMetrics={() =>
+              navigation.navigate('PetHealthMetrics', {
+                petId: route.params.petId,
+                petName: route.params.petName,
+              })
+            }
           />
         )}
       </PetStack.Screen>
@@ -152,11 +159,7 @@ function MainTabs() {
         component={AppointmentScreen}
         options={{ title: 'Appointments' }}
       />
-      <Tab.Screen
-        name="Community"
-        component={CommunityScreen}
-        options={{ title: 'Community' }}
-      />
+      <Tab.Screen name="Community" component={CommunityScreen} options={{ title: 'Community' }} />
       <Tab.Screen
         name="Emergency"
         component={EmergencyContactsScreen}
@@ -208,59 +211,70 @@ export default function AppNavigator() {
     }
   >(null);
 
+  const navTheme = useNavigationTheme();
+
   return (
-    <NavigationContainer
-      ref={navRef as React.Ref<never>}
-      linking={linking}
-      onStateChange={() => {
-        const route = (
-          navRef.current as { getCurrentRoute?: () => { name?: string } | undefined } | null
-        )?.getCurrentRoute?.();
-        if (route?.name) analyticsService.screenView(route.name);
-      }}
-    >
-      <RootStack.Navigator screenOptions={{ headerShown: false }}>
-        <RootStack.Screen name="Onboarding">
-          {({ navigation }) => (
-            <OnboardingScreen
-              onComplete={() => navigation.replace('Auth')}
-              onSkip={() => navigation.replace('Auth')}
+    <>
+      <StatusBar
+        barStyle={navTheme.dark ? 'light-content' : 'dark-content'}
+        backgroundColor={navTheme.colors.card}
+      />
+      <NavigationContainer
+        ref={navRef as React.Ref<never>}
+        theme={navTheme}
+        linking={linking}
+        onStateChange={() => {
+          const route = (
+            navRef.current as { getCurrentRoute?: () => { name?: string } | undefined } | null
+          )?.getCurrentRoute?.();
+          if (route?.name) analyticsService.screenView(route.name);
+        }}
+      >
+        <RootStack.Navigator screenOptions={{ headerShown: false }}>
+          <RootStack.Screen name="Onboarding">
+            {({ navigation }) => (
+              <OnboardingScreen
+                onComplete={() => navigation.replace('Auth')}
+                onSkip={() => navigation.replace('Auth')}
+              />
+            )}
+          </RootStack.Screen>
+
+          <RootStack.Screen name="Auth">
+            {({ navigation }) => (
+              <AuthNavigator onAuthenticated={() => navigation.replace('Main')} />
+            )}
+          </RootStack.Screen>
+
+          <RootStack.Screen name="Main" component={MainTabs} />
+
+          {/* Modals */}
+          <RootStack.Group screenOptions={{ presentation: 'modal' }}>
+            <RootStack.Screen name="QRScanner">
+              {({ navigation }) => (
+                <QRScannerScreen
+                  onScanSuccess={() => navigation.goBack()}
+                  onClose={() => navigation.goBack()}
+                  onManualEntry={() => navigation.replace('ManualEntry')}
+                />
+              )}
+            </RootStack.Screen>
+            <RootStack.Screen name="ManualEntry">
+              {({ navigation }) => (
+                <ManualEntryScreen
+                  onSubmit={() => navigation.goBack()}
+                  onClose={() => navigation.goBack()}
+                />
+              )}
+            </RootStack.Screen>
+            <RootStack.Screen
+              name="Payment"
+              component={PaymentScreen}
+              options={{ headerShown: true, title: 'Premium Plans' }}
             />
-          )}
-        </RootStack.Screen>
-
-        <RootStack.Screen name="Auth">
-          {({ navigation }) => <AuthNavigator onAuthenticated={() => navigation.replace('Main')} />}
-        </RootStack.Screen>
-
-        <RootStack.Screen name="Main" component={MainTabs} />
-
-        {/* Modals */}
-        <RootStack.Group screenOptions={{ presentation: 'modal' }}>
-          <RootStack.Screen name="QRScanner">
-            {({ navigation }) => (
-              <QRScannerScreen
-                onScanSuccess={() => navigation.goBack()}
-                onClose={() => navigation.goBack()}
-                onManualEntry={() => navigation.replace('ManualEntry')}
-              />
-            )}
-          </RootStack.Screen>
-          <RootStack.Screen name="ManualEntry">
-            {({ navigation }) => (
-              <ManualEntryScreen
-                onSubmit={() => navigation.goBack()}
-                onClose={() => navigation.goBack()}
-              />
-            )}
-          </RootStack.Screen>
-          <RootStack.Screen
-            name="Payment"
-            component={PaymentScreen}
-            options={{ headerShown: true, title: 'Premium Plans' }}
-          />
-        </RootStack.Group>
-      </RootStack.Navigator>
-    </NavigationContainer>
+          </RootStack.Group>
+        </RootStack.Navigator>
+      </NavigationContainer>
+    </>
   );
 }

@@ -6,7 +6,6 @@ import './src/i18n';
 import OfflineIndicator from './src/components/OfflineIndicator';
 import UpdatePrompt from './src/components/UpdatePrompt';
 import { useSplashGuard } from './src/components/SplashGuard';
-import AppNavigator from './src/navigation';
 import { PetProvider } from './src/context/PetContext';
 import crashReporting from './src/services/crashReporting';
 import updateService from './src/services/updateService';
@@ -47,7 +46,6 @@ function App() {
     return () => subscription.remove();
   }, []);
 
-  // Render nothing (splash is still visible) until critical init is done
   if (!appReady) return <View style={styles.root} />;
 
   return (

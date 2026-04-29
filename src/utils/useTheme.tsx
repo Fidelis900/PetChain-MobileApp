@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useState, useCallback } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useColorScheme } from 'react-native';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
@@ -7,18 +7,17 @@ export type ThemeMode = 'light' | 'dark' | 'system';
 const STORAGE_KEY = '@theme_mode';
 
 export interface ThemeState {
-  /** The resolved theme actually applied ('light' | 'dark') */
   theme: 'light' | 'dark';
-  /** The user's preference ('light' | 'dark' | 'system') */
   mode: ThemeMode;
   setMode: (mode: ThemeMode) => Promise<void>;
 }
 
-export function useTheme(): ThemeState {
-  const systemScheme = useColorScheme(); // 'light' | 'dark' | null
+const ThemeContext = createContext<ThemeState | null>(null);
+
+export const ThemeProvider: React.FC<React.PropsWithChildren<unknown>> = ({ children }) => {
+  const systemScheme = useColorScheme();
   const [mode, setModeState] = useState<ThemeMode>('system');
 
-  // Load persisted preference on mount
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY)
       .then((stored) => {
@@ -34,11 +33,21 @@ export function useTheme(): ThemeState {
     try {
       await AsyncStorage.setItem(STORAGE_KEY, newMode);
     } catch {
-      // non-critical
+      // ignore storage failures
     }
   }, []);
 
   const theme: 'light' | 'dark' = mode === 'system' ? (systemScheme ?? 'light') : mode;
 
-  return { theme, mode, setMode };
+  const value = useMemo(() => ({ theme, mode, setMode }), [theme, mode, setMode]);
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+};
+
+export function useTheme(): ThemeState {
+  const context = useContext(ThemeContext);
+  if (!context) {
+    throw new Error('useTheme must be used within a ThemeProvider');
+  }
+  return context;
 }
