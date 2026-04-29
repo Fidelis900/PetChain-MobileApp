@@ -79,6 +79,9 @@ module.exports = {
         {
           organization: 'petchain',
           project: 'mobile-app',
+          // Upload source maps so stack traces are human-readable in the dashboard
+          uploadNativeSymbols: true,
+          uploadSourceMaps: true,
         },
       ],
     ],

@@ -1,3 +1,5 @@
+import crashReporting from '../services/crashReporting';
+
 declare const __DEV__: boolean;
 
 type ErrorContext = {
@@ -45,7 +47,8 @@ export function logError(error: Error, context?: ErrorContext): void {
 }
 
 function sendToService(log: LoggedError, frequency: number): void {
-  void log;
-  void frequency;
-  // TODO: replace with real Sentry/Datadog call in production
+  crashReporting.captureException(
+    Object.assign(new Error(log.message), { stack: log.stack }),
+    { ...(log.context ?? {}), frequency },
+  );
 }

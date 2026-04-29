@@ -1,4 +1,5 @@
 import apiClient, { resilientRequest } from './apiClient';
+import crashReporting from './crashReporting';
 
 async function sendToServer(payload: Record<string, unknown>) {
   try {
@@ -24,6 +25,10 @@ async function logError(err: unknown, meta: string | Record<string, unknown> = '
     // console log locally for developer visibility
     // eslint-disable-next-line no-console
     console.error('[ErrorLogger]', payload);
+    // Forward to Sentry for crash dashboard visibility
+    crashReporting.captureException(err instanceof Error ? err : new Error(String(err)), {
+      meta: typeof meta === 'string' ? { info: meta } : meta,
+    });
     await sendToServer(payload);
   } catch (e) {
     // final fallback — do nothing

@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import errorLogger from '../services/errorLogger';
+import crashReporting from '../services/crashReporting';
 
 interface Props {
   children: React.ReactNode;
@@ -26,6 +27,10 @@ export class ErrorBoundary extends React.Component<Props, State> {
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     this.setState({ info });
     void errorLogger.logError(error, info.componentStack ?? '');
+    // Report to Sentry with component stack as extra context
+    crashReporting.captureException(error, {
+      componentStack: info.componentStack ?? '',
+    });
   }
 
   handleRetry = () => {
