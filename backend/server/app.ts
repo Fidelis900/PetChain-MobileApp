@@ -2,13 +2,16 @@ import cors from 'cors';
 import express, { type Express } from 'express';
 
 import { errBody } from './response';
+import { sanitizeInputs } from '../middleware/sanitize';
 import analyticsRouter from './routes/analytics';
-import backupsRouter from './routes/backups';
 import appointmentsRouter from './routes/appointments';
 import auditLogsRouter from './routes/auditLogs';
+import backupsRouter from './routes/backups';
 import communityRouter from './routes/community';
+import importRouter from './routes/import';
 import medicalRecordsRouter from './routes/medicalRecords';
 import medicationsRouter from './routes/medications';
+import paymentsRouter from './routes/payments';
 import petsRouter from './routes/pets';
 import usersRouter from './routes/users';
 import importRouter from './routes/import';
@@ -20,6 +23,7 @@ export function createApp(): Express {
   const app = express();
   app.use(cors());
   app.use(express.json());
+  app.use(sanitizeInputs);
   app.use(attachAudit as any);
 
   const api = express.Router();
