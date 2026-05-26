@@ -29,6 +29,18 @@ coverage/
 .expo-shared/
 web-build/
 
+# React Native / native build output
+android/app/build/
+ios/Pods/
+ios/build/
+*.keystore
+*.p8
+*.xcworkspace
+*.xcuserstate
+
+# TypeScript build cache
+*.tsbuildinfo
+
 # Local databases and caches
 *.db
 *.sqlite
