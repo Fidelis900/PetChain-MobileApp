@@ -73,6 +73,28 @@ export interface StoredBackup {
   payload: Record<string, unknown>;
 }
 
+export interface StoredPetQrIdentity {
+  petId: string;
+  token: string;
+  issuedAt: string;
+  revokedAt?: string;
+}
+
+export interface StoredEmergencySession {
+  id: string;
+  userId?: string;
+  message: string;
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+  shareToken: string;
+  createdAt: string;
+  expiresAt: string;
+  cancelledAt?: string;
+  contacts: Array<{ name: string; phoneNumber: string; pushToken?: string }>;
+  updates: Array<{ latitude: number; longitude: number; accuracy?: number; recordedAt: string }>;
+}
+
 /** Matches `backend/services/medicationService` client expectations. */
 export interface StoredMedication {
   id: string;
@@ -175,6 +197,8 @@ function seed() {
 const state = seed();
 
 const backups = new Map<string, StoredBackup>();
+const petQrIdentities = new Map<string, StoredPetQrIdentity>();
+const emergencySessions = new Map<string, StoredEmergencySession>();
 
 export function newId(): string {
   return randomUUID();
@@ -183,5 +207,7 @@ export function newId(): string {
 export const store = {
   ...state,
   backups,
+  petQrIdentities,
+  emergencySessions,
   newId,
 };

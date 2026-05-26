@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
+import crypto from 'crypto';
+
 import express from 'express';
 
 import { authenticateJWT, type AuthenticatedRequest } from '../../middleware/auth';
@@ -10,6 +12,38 @@ import { ok, sendError } from '../response';
 import { type StoredMedicalRecord, type StoredPet, store } from '../store';
 
 const router = express.Router();
+const QR_SECRET = process.env.QR_SIGNING_SECRET ?? 'petchain-dev-qr-secret';
+
+function signPetIdentity(petId: string, issuedAt: string): string {
+  return crypto.createHmac('sha256', QR_SECRET).update(`${petId}:${issuedAt}`).digest('hex');
+}
+
+function activeQrForPet(petId: string) {
+  return [...store.petQrIdentities.values()]
+    .filter((row) => row.petId === petId && !row.revokedAt)
+    .sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime())[0];
+}
+
+function emergencyPetView(pet: StoredPet | DBPet) {
+  const row = 'owner_id' in pet ? undefined : pet;
+  return {
+    id: pet.id,
+    name: pet.name,
+    species: pet.species,
+    breed: pet.breed,
+    microchipId: 'microchip_id' in pet ? pet.microchip_id : row?.microchipId,
+    photoUrl: 'photo_url' in pet ? pet.photo_url : row?.photoUrl,
+    emergencyNotes: [...store.medicalRecords.values()]
+      .filter((record) => record.petId === pet.id)
+      .sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime())
+      .slice(0, 3)
+      .map((record) => ({
+        type: mapMobileRecordType(record.type),
+        date: record.visitDate,
+        notes: record.notes ?? record.diagnosis ?? '',
+      })),
+  };
+}
 
 async function ownerSummary(ownerId: string) {
   const u = await userRepository.findById(ownerId);
@@ -53,7 +87,51 @@ function medicalToMobileRow(r: StoredMedicalRecord) {
   };
 }
 
-// All pets routes require authentication
+router.get('/identity/:token', async (req, res) => {
+  const identity = store.petQrIdentities.get(req.params.token);
+  if (!identity || identity.revokedAt) {
+    return sendError(res, 404, 'QR_NOT_FOUND', 'This pet identity code is invalid or expired');
+  }
+  const pet = (await petRepository.findById(identity.petId)) || store.pets.get(identity.petId);
+  if (!pet) return sendError(res, 404, 'NOT_FOUND', 'Pet not found');
+  return res.json(ok({ pet: emergencyPetView(pet), issuedAt: identity.issuedAt }));
+});
+
+router.get('/identity/:token/view', async (req, res) => {
+  const identity = store.petQrIdentities.get(req.params.token);
+  if (!identity || identity.revokedAt) {
+    return res.status(404).send('<h1>Pet identity code unavailable</h1>');
+  }
+  const pet = (await petRepository.findById(identity.petId)) || store.pets.get(identity.petId);
+  if (!pet) return res.status(404).send('<h1>Pet not found</h1>');
+  const view = emergencyPetView(pet);
+  return res.type('html').send(`
+    <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>${view.name} Emergency Profile</title></head>
+    <body style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;margin:0;background:#f6fbf7;color:#16301f">
+      <main style="max-width:680px;margin:0 auto;padding:24px">
+        <section style="background:white;border-radius:20px;padding:24px;box-shadow:0 12px 40px rgba(0,0,0,.08)">
+          <h1 style="margin-top:0">${view.name}</h1>
+          <p><strong>Species:</strong> ${view.species}</p>
+          ${view.breed ? `<p><strong>Breed:</strong> ${view.breed}</p>` : ''}
+          ${view.microchipId ? `<p><strong>Microchip:</strong> ${view.microchipId}</p>` : ''}
+          <h2>Recent critical notes</h2>
+          ${
+            view.emergencyNotes.length
+              ? view.emergencyNotes
+                  .map(
+                    (note) =>
+                      `<p><strong>${note.type}</strong> (${note.date})<br>${note.notes}</p>`,
+                  )
+                  .join('')
+              : '<p>No emergency notes available.</p>'
+          }
+        </section>
+      </main>
+    </body></html>
+  `);
+});
+
+// All routes below require authentication
 router.use(authenticateJWT);
 
 router.get('/owner/:ownerId', (req: AuthenticatedRequest, res) => {
@@ -81,6 +159,30 @@ router.get('/qr/:qrCode', async (req, res) => {
   }
   if (!pet) return sendError(res, 404, 'NOT_FOUND', 'Pet not found for QR code');
   return res.json(ok(await toPetResponse(pet)));
+});
+
+router.post('/:id/qr-identity', (req: AuthenticatedRequest, res) => {
+  const pet = store.pets.get(req.params.id);
+  if (!pet) return sendError(res, 404, 'NOT_FOUND', 'Pet not found');
+  if (req.user!.role !== UserRole.ADMIN && req.user!.id !== pet.ownerId) {
+    return sendError(res, 403, 'FORBIDDEN', 'You do not have permission to generate this code');
+  }
+  const previous = activeQrForPet(pet.id);
+  if (previous) {
+    store.petQrIdentities.set(previous.token, { ...previous, revokedAt: new Date().toISOString() });
+  }
+  const issuedAt = new Date().toISOString();
+  const token = `${pet.id}.${issuedAt}.${signPetIdentity(pet.id, issuedAt)}`;
+  const row = { petId: pet.id, token, issuedAt };
+  store.petQrIdentities.set(token, row);
+  return res.status(201).json(
+    ok({
+      token,
+      url: `https://petchain.app/pets/identity/${encodeURIComponent(token)}/view`,
+      deepLink: `petchain://pet/${encodeURIComponent(pet.id)}`,
+      issuedAt,
+    }),
+  );
 });
 
 router.get('/:petId/medical-records', (req: AuthenticatedRequest, res) => {
@@ -220,6 +322,14 @@ router.put('/:id', (req: AuthenticatedRequest, res) => {
       : {}),
     updatedAt: t,
   };
+  if (
+    body.ownerId !== undefined &&
+    req.user!.role === UserRole.ADMIN &&
+    String(body.ownerId) !== pet.ownerId
+  ) {
+    const previous = activeQrForPet(pet.id);
+    if (previous) store.petQrIdentities.set(previous.token, { ...previous, revokedAt: t });
+  }
   store.pets.set(pet.id, next);
   return res.json(ok(toPetResponse(next), 'Pet updated'));
 });

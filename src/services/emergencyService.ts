@@ -1,6 +1,7 @@
 import Geolocation from '@react-native-community/geolocation';
 import { Linking, Platform } from 'react-native';
 
+import apiClient from './apiClient';
 import config from '../config';
 import { getItem, setItem, removeItem as _removeItem } from './localDB';
 import { requestAndroidPermission } from './permissionService';
@@ -38,6 +39,16 @@ export interface SOSPayload {
   location: Location;
   timestamp: number;
   message?: string;
+  sessionId?: string;
+  shareToken?: string;
+  shareUrl?: string;
+}
+
+interface LiveSOSSession {
+  id: string;
+  shareToken: string;
+  shareUrl: string;
+  expiresAt: string;
 }
 
 // ─── Storage keys ─────────────────────────────────────────────────────────────
@@ -338,17 +349,21 @@ class EmergencyService {
    */
   async triggerSOS(message?: string): Promise<SOSPayload> {
     const location = await this.getCurrentLocation();
+    const contacts = await this.getEmergencyContacts();
+    const session = await this.startLiveLocationSession(location, contacts, message);
     const payload: SOSPayload = {
       location,
       timestamp: Date.now(),
       message: message || 'Pet emergency - need immediate help',
+      sessionId: session?.id,
+      shareToken: session?.shareToken,
+      shareUrl: session?.shareUrl,
     };
 
     // Dispatch alerts to all emergency contacts
     await this.sendSOSAlerts(payload);
 
     // Auto-call first 24h emergency contact as a primary action
-    const contacts = await this.getEmergencyContacts();
     const primaryContact = contacts.find((c) => c.available24h) || contacts[0];
     if (primaryContact) {
       this.callContact(primaryContact.phoneNumber);
@@ -362,7 +377,9 @@ class EmergencyService {
    */
   private async sendSOSAlerts(payload: SOSPayload): Promise<void> {
     const contacts = await this.getEmergencyContacts();
-    const mapsLink = `https://www.google.com/maps/search/?api=1&query=${payload.location.latitude},${payload.location.longitude}`;
+    const mapsLink =
+      payload.shareUrl ||
+      `https://www.google.com/maps/search/?api=1&query=${payload.location.latitude},${payload.location.longitude}`;
     const fullMessage = `🚨 SOS EMERGENCY: ${payload.message}\nLast known location: ${mapsLink}`;
 
     // 1. Iterate through contacts and prepare to send alerts
@@ -391,6 +408,40 @@ class EmergencyService {
     Linking.canOpenURL(url).then((supported) => {
       if (supported) Linking.openURL(url);
     });
+  }
+
+  async startLiveLocationSession(
+    location: Location,
+    contacts: EmergencyContact[],
+    message?: string,
+    timeoutMinutes = 60,
+  ): Promise<LiveSOSSession | null> {
+    try {
+      const response = await apiClient.post('/emergency/sessions', {
+        message: message || 'Pet emergency - need immediate help',
+        latitude: location.latitude,
+        longitude: location.longitude,
+        timeoutMinutes,
+        contacts: contacts.map((contact) => ({
+          name: contact.name,
+          phoneNumber: contact.phoneNumber,
+        })),
+      });
+      return response.data?.data ?? response.data;
+    } catch {
+      return null;
+    }
+  }
+
+  async updateLiveLocation(shareToken: string, location: Location): Promise<void> {
+    await apiClient.post(`/emergency/sessions/${encodeURIComponent(shareToken)}/location`, {
+      latitude: location.latitude,
+      longitude: location.longitude,
+    });
+  }
+
+  async cancelLiveLocationSession(shareToken: string): Promise<void> {
+    await apiClient.post(`/emergency/sessions/${encodeURIComponent(shareToken)}/cancel`);
   }
 
   navigateToClinic(address: string): void {

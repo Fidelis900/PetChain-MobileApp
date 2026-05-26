@@ -19,6 +19,7 @@ module.exports = {
   expo: {
     name: APP_NAME_MAP[APP_ENV] ?? 'PetChain',
     slug: 'petchain-mobile',
+    scheme: 'petchain',
     version: APP_VERSION,
     orientation: 'portrait',
     icon: './assets/icon.png',

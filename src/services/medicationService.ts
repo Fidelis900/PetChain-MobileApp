@@ -16,7 +16,16 @@ export interface DoseLog {
   medicationId: string;
   takenAt: string; // ISO string
   skipped?: boolean;
+  scheduledFor?: string;
   notes?: string;
+}
+
+export interface MedicationAdherence {
+  scheduled: number;
+  taken: number;
+  skipped: number;
+  missed: number;
+  score: number;
 }
 
 export async function getMedications(): Promise<Medication[]> {
@@ -37,6 +46,56 @@ export async function getDoseLogs(): Promise<DoseLog[]> {
 
 export async function logDose(log: DoseLog): Promise<void> {
   await dbAddDoseLog(log);
+}
+
+export function getDoseStatus(
+  medicationId: string,
+  scheduledTime: Date,
+  logs: DoseLog[],
+): 'taken' | 'skipped' | 'missed' | 'pending' {
+  const windowMs = 30 * 60 * 1000;
+  const match = logs.find((log) => {
+    if (log.medicationId !== medicationId) return false;
+    if (log.scheduledFor)
+      return Math.abs(new Date(log.scheduledFor).getTime() - scheduledTime.getTime()) <= windowMs;
+    return Math.abs(new Date(log.takenAt).getTime() - scheduledTime.getTime()) <= windowMs;
+  });
+  if (match?.skipped) return 'skipped';
+  if (match) return 'taken';
+  return scheduledTime.getTime() + windowMs < Date.now() ? 'missed' : 'pending';
+}
+
+export function calculateAdherence(
+  medications: Medication[],
+  logs: DoseLog[],
+  fromDate: Date,
+  toDate: Date,
+): MedicationAdherence {
+  let scheduled = 0;
+  let taken = 0;
+  let skipped = 0;
+  let missed = 0;
+  medications.forEach((med) => {
+    getScheduleForRange(med, fromDate, toDate).forEach((doseTime) => {
+      scheduled += 1;
+      const status = getDoseStatus(med.id, doseTime, logs);
+      if (status === 'taken') taken += 1;
+      if (status === 'skipped') skipped += 1;
+      if (status === 'missed') missed += 1;
+    });
+  });
+  const denominator = Math.max(1, scheduled - skipped);
+  return { scheduled, taken, skipped, missed, score: Math.round((taken / denominator) * 100) };
+}
+
+export function getLowRefillMedications(medications: Medication[], threshold = 0.2): Medication[] {
+  return medications.filter(
+    (med) =>
+      med.remainingPills !== undefined &&
+      med.totalPills !== undefined &&
+      med.totalPills > 0 &&
+      med.remainingPills <= med.totalPills * threshold,
+  );
 }
 
 export function getMedicationEndDate(med: Medication): Date | null {

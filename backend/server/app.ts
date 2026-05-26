@@ -9,6 +9,7 @@ import auditLogsRouter from './routes/auditLogs';
 import backupsRouter from './routes/backups';
 import communityRouter from './routes/community';
 import docsRouter from './routes/docs';
+import emergencyRouter from './routes/emergency';
 import importRouter from './routes/import';
 import medicalRecordsRouter from './routes/medicalRecords';
 import medicationsRouter from './routes/medications';
@@ -42,6 +43,7 @@ export function createApp(): Express {
   api.use('/payments', paymentsRouter);
   api.use('/audit-logs', auditLogsRouter);
   api.use('/docs', docsRouter);
+  api.use('/emergency', emergencyRouter);
   api.use('/community', communityRouter);
   api.use('/sync', syncRouter);
 
