@@ -1,6 +1,6 @@
 import * as Sentry from '@sentry/react-native';
-import React, { useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet, AppState, type AppStateStatus } from 'react-native';
 
 import './src/i18n';
 import OfflineIndicator from './src/components/OfflineIndicator';
@@ -8,6 +8,12 @@ import { useSplashGuard } from './src/components/SplashGuard';
 import UpdatePrompt from './src/components/UpdatePrompt';
 import { PetProvider } from './src/context/PetContext';
 import AppNavigator from './src/navigation/AppNavigator';
+import LockScreen from './src/screens/LockScreen';
+import {
+  enableScreenCapturePrevention,
+  loadLockTimeout,
+  getLockTimeoutMs,
+} from './src/services/appLockService';
 import crashReporting from './src/services/crashReporting';
 import {
   registerNotificationActions,
@@ -23,6 +29,34 @@ function App() {
   const [updateStatus, setUpdateStatus] = React.useState<
     { visible: false } | { visible: true; variant: 'optional' | 'force'; storeUrl?: string }
   >({ visible: false });
+  const [locked, setLocked] = useState(false);
+  const [pinFallback, setPinFallback] = useState(false);
+  const backgroundedAt = React.useRef<number | null>(null);
+
+  // Enable screen capture prevention on mount
+  useEffect(() => {
+    void enableScreenCapturePrevention();
+  }, []);
+
+  // Lock app after idle timeout when returning to foreground
+  useEffect(() => {
+    const onChange = async (state: AppStateStatus) => {
+      if (state === 'background' || state === 'inactive') {
+        backgroundedAt.current = Date.now();
+      } else if (state === 'active' && backgroundedAt.current !== null) {
+        const elapsed = Date.now() - backgroundedAt.current;
+        backgroundedAt.current = null;
+        const timeout = await loadLockTimeout();
+        const ms = getLockTimeoutMs(timeout);
+        if (ms > 0 && elapsed >= ms) {
+          setPinFallback(false);
+          setLocked(true);
+        }
+      }
+    };
+    const sub = AppState.addEventListener('change', onChange);
+    return () => sub.remove();
+  }, []);
 
   // Check for updates on launch
   React.useEffect(() => {
@@ -52,6 +86,10 @@ function App() {
   }, []);
 
   if (!appReady) return <View style={styles.root} />;
+
+  if (locked) {
+    return <LockScreen showPinFallback={pinFallback} onUnlock={() => setLocked(false)} />;
+  }
 
   return (
     <PetProvider>
