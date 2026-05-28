@@ -26,6 +26,7 @@ import PetFormScreen from '../screens/PetFormScreen';
 import PetHealthDashboardScreen from '../screens/PetHealthDashboardScreen';
 import PetHealthMetricsScreen from '../screens/PetHealthMetricsScreen';
 import PetListScreen from '../screens/PetListScreen';
+import PetProfileScreen from '../screens/PetProfileScreen';
 import PetShareScreen from '../screens/PetShareScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import QRScannerScreen from '../screens/QRScannerScreen';
@@ -57,7 +58,13 @@ function PetNavigator() {
               navigation.navigate('PetHealthDashboard', { petId, petName })
             }
             onShare={(petId, petName) => navigation.navigate('PetShare', { petId, petName })}
+            onViewProfile={(petId) => navigation.navigate('PetProfile', { petId })}
           />
+        )}
+      </PetStack.Screen>
+      <PetStack.Screen name="PetProfile" options={{ title: 'Pet Profile' }}>
+        {({ route, navigation }) => (
+          <PetProfileScreen petId={route.params.petId} onBack={() => navigation.goBack()} />
         )}
       </PetStack.Screen>
       <PetStack.Screen name="PetHealthDashboard" options={{ title: 'Health Dashboard' }}>
@@ -189,6 +196,7 @@ const linking: LinkingOptions<RootStackParamList> = {
             screens: {
               PetListScreen: 'pets',
               PetDetail: 'pets/:petId',
+              PetProfile: 'pets/:petId/profile',
               PetHealthDashboard: 'pets/:petId/dashboard',
               PetHealthMetrics: 'pets/:petId/health',
               PetForm: 'pets/form/:petId?',

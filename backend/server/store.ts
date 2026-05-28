@@ -23,6 +23,7 @@ export interface StoredPet {
   species: string;
   breed?: string;
   dateOfBirth?: string;
+  weightKg?: number;
   microchipId?: string;
   photoUrl?: string;
   thumbnailUrl?: string;

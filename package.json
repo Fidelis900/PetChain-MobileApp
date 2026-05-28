@@ -78,7 +78,8 @@
       "^expo-constants$": "<rootDir>/src/__mocks__/expo-constants.ts",
       "^expo-sqlite$": "<rootDir>/src/__mocks__/expo-sqlite.ts",
       "^expo-notifications$": "<rootDir>/src/__mocks__/expo-notifications.ts",
-      "^expo-secure-store$": "<rootDir>/src/__mocks__/expo-secure-store.ts"
+      "^expo-secure-store$": "<rootDir>/src/__mocks__/expo-secure-store.ts",
+      "^@sentry/react-native$": "<rootDir>/src/__mocks__/@sentry/react-native.ts"
     },
     "collectCoverageFrom": [
       "src/**/*.ts",

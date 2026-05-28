@@ -54,6 +54,7 @@ export interface Pet {
   species: Species;
   breed?: string;
   dateOfBirth?: string;
+  weightKg?: number;
   microchipId?: string;
   photoUrl?: string;
   ownerId: string;
@@ -67,6 +68,7 @@ export interface Pet {
 export interface PetWithDetails extends Pet {
   age?: number;
   weight?: number;
+  weightKg?: number;
   gender?: 'male' | 'female';
   color?: string;
   medicalHistory: MedicalHistoryRecord[];
