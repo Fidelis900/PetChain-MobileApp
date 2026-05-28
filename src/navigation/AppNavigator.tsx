@@ -10,7 +10,6 @@ import { DEEP_LINK_PREFIX } from './types';
 import type { Pet } from '../models/Pet';
 import AppointmentScreen from '../screens/AppointmentScreen';
 import AuthNavigator from '../screens/AuthNavigator';
-import AuditHistoryScreen from '../screens/AuditHistoryScreen';
 import CommunityScreen from '../screens/CommunityScreen';
 import DeleteAccountScreen from '../screens/DeleteAccountScreen';
 import EmergencyContactsScreen from '../screens/EmergencyContactsScreen';
@@ -27,6 +26,7 @@ import PetFormScreen from '../screens/PetFormScreen';
 import PetHealthDashboardScreen from '../screens/PetHealthDashboardScreen';
 import PetHealthMetricsScreen from '../screens/PetHealthMetricsScreen';
 import PetListScreen from '../screens/PetListScreen';
+import PetProfileScreen from '../screens/PetProfileScreen';
 import PetShareScreen from '../screens/PetShareScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import QRScannerScreen from '../screens/QRScannerScreen';
@@ -58,24 +58,13 @@ function PetNavigator() {
               navigation.navigate('PetHealthDashboard', { petId, petName })
             }
             onShare={(petId, petName) => navigation.navigate('PetShare', { petId, petName })}
-            onAuditHistory={(petId, petName) =>
-              navigation.navigate('AuditHistory', {
-                entityType: 'pet',
-                entityId: petId,
-                title: `${petName} • Audit`,
-              })
-            }
+            onViewProfile={(petId) => navigation.navigate('PetProfile', { petId })}
           />
         )}
       </PetStack.Screen>
-      <PetStack.Screen name="AuditHistory" options={{ title: 'Audit History' }}>
+      <PetStack.Screen name="PetProfile" options={{ title: 'Pet Profile' }}>
         {({ route, navigation }) => (
-          <AuditHistoryScreen
-            entityType={route.params.entityType}
-            entityId={route.params.entityId}
-            title={route.params.title}
-            onBack={() => navigation.goBack()}
-          />
+          <PetProfileScreen petId={route.params.petId} onBack={() => navigation.goBack()} />
         )}
       </PetStack.Screen>
       <PetStack.Screen name="PetHealthDashboard" options={{ title: 'Health Dashboard' }}>
@@ -207,6 +196,7 @@ const linking: LinkingOptions<RootStackParamList> = {
             screens: {
               PetListScreen: 'pets',
               PetDetail: 'pets/:petId',
+              PetProfile: 'pets/:petId/profile',
               PetHealthDashboard: 'pets/:petId/dashboard',
               PetHealthMetrics: 'pets/:petId/health',
               PetForm: 'pets/form/:petId?',
