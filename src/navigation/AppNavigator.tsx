@@ -29,9 +29,8 @@ import PetListScreen from '../screens/PetListScreen';
 import PetShareScreen from '../screens/PetShareScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import QRScannerScreen from '../screens/QRScannerScreen';
-import TelemedicineScreen from '../screens/TelemedicineScreen';
+import ForumScreen from '../screens/ForumScreen';
 import analyticsService from '../services/analyticsService';
-import performance from '../utils/performance';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -167,11 +166,6 @@ function MainTabs() {
         component={AppointmentScreen}
         options={{ title: 'Appointments' }}
       />
-      <Tab.Screen
-        name="Telemedicine"
-        component={TelemedicineScreen}
-        options={{ title: 'Telemedicine' }}
-      />
       <Tab.Screen name="Community" component={CommunityScreen} options={{ title: 'Community' }} />
       <Tab.Screen
         name="Emergency"
@@ -226,7 +220,6 @@ export default function AppNavigator() {
   >(null);
 
   const navTheme = useNavigationTheme();
-  const currentScreenSpan = React.useRef<ReturnType<typeof performance.startSpan> | undefined>();
 
   return (
     <>
@@ -242,20 +235,7 @@ export default function AppNavigator() {
           const route = (
             navRef.current as { getCurrentRoute?: () => { name?: string } | undefined } | null
           )?.getCurrentRoute?.();
-          const name = route?.name;
-          // finish previous span
-          try {
-            performance.finishSpan(currentScreenSpan.current);
-          } catch (e) {
-            // ignore
-          }
-
-          if (name) {
-            analyticsService.screenView(name);
-            // start new screen span
-            currentScreenSpan.current = performance.startSpan(`screen:${name}`);
-            performance.recordMetric('screen.render_start', Date.now(), { screen: name });
-          }
+          if (route?.name) analyticsService.screenView(route.name);
         }}
       >
         <RootStack.Navigator screenOptions={{ headerShown: false }}>
@@ -275,6 +255,11 @@ export default function AppNavigator() {
           </RootStack.Screen>
 
           <RootStack.Screen name="Main" component={MainTabs} />
+          <RootStack.Screen
+            name="Forum"
+            component={ForumScreen}
+            options={{ headerShown: true, title: 'Forum' }}
+          />
 
           {/* Modals */}
           <RootStack.Group screenOptions={{ presentation: 'modal' }}>

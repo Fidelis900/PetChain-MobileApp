@@ -11,6 +11,7 @@ import appointmentsRouter from './routes/appointments';
 import auditLogsRouter from './routes/auditLogs';
 import backupsRouter from './routes/backups';
 import communityRouter from './routes/community';
+import forumRouter from './routes/forum';
 import docsRouter from './routes/docs';
 import emergencyRouter from './routes/emergency';
 import importRouter from './routes/import';
@@ -83,6 +84,7 @@ export function createApp(): Express {
   api.use('/docs', docsRouter);
   api.use('/emergency', emergencyRouter);
   api.use('/community', communityRouter);
+  api.use('/forum', forumRouter);
   api.use('/photos', photosRouter);
   api.use('/sync', syncRouter);
   api.use('/vets', vetsRouter);
