@@ -201,6 +201,37 @@ const backups = new Map<string, StoredBackup>();
 const petQrIdentities = new Map<string, StoredPetQrIdentity>();
 const emergencySessions = new Map<string, StoredEmergencySession>();
 
+// ─── Travel Certificates ──────────────────────────────────────────────────────
+
+export interface StoredTravelCertificate {
+  id: string;
+  petId: string;
+  petName: string;
+  destinationCountryCode: string;
+  destinationCountryName: string;
+  travelDate: string;
+  generatedAt: string;
+  status: 'draft' | 'ready' | 'incomplete' | 'anchored' | 'anchor_failed';
+  requirementChecks: Array<{
+    requirementType: 'vaccination' | 'health_check' | 'document';
+    requirementName: string;
+    met: boolean;
+    details?: string;
+    satisfiedAt?: string;
+    actionRequired?: string;
+  }>;
+  complianceScore: number;
+  pdfUrl?: string;
+  blockchainTxHash?: string;
+  blockchainHash?: string;
+  isBlockchainAnchored: boolean;
+  blockchainAnchoredAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const travelCertificates = new Map<string, StoredTravelCertificate>();
+
 export function newId(): string {
   return randomUUID();
 }
@@ -210,5 +241,6 @@ export const store = {
   backups,
   petQrIdentities,
   emergencySessions,
+  travelCertificates,
   newId,
 };
