@@ -6,6 +6,8 @@ import { createRedisSessionMiddleware } from '../middleware/redisSession';
 import { sanitizeInputs } from '../middleware/sanitize';
 import { applySecurityHeaders } from '../middleware/securityHeaders';
 import authRouter from './routes/auth';
+import { requestLogger } from '../middleware/requestLogger';
+import logger from '../utils/logger';
 import analyticsRouter from './routes/analytics';
 import performanceLogger from '../middleware/performanceLogger';
 import appointmentsRouter from './routes/appointments';
@@ -50,6 +52,7 @@ export function createApp(): Express {
 
   app.use(cors());
   app.use(express.json());
+  app.use(requestLogger);
   app.use(sanitizeInputs);
   // performance logging middleware (Sentry)
   app.use(performanceLogger);
@@ -110,7 +113,7 @@ export function createApp(): Express {
   app.use('/api', api);
 
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    console.error('Unhandled Error:', err);
+    logger.error('Unhandled error', { error: err.message, stack: err.stack });
     res.status(500).json(errBody('INTERNAL_ERROR', err.message || 'An unexpected error occurred'));
   });
 
