@@ -1,5 +1,7 @@
 import axios, { type AxiosInstance } from 'axios';
+import * as SecureStore from 'expo-secure-store';
 
+import { hashPassword } from '../utils/encryption';
 import type {
   LoginRequest,
   LoginResponse,
@@ -352,14 +354,10 @@ let lastForegroundAt = Date.now();
 let inMemorySecret: string | null = null;
 
 export async function setPin(pin: string): Promise<void> {
-  const { hashPassword } = await import('../utils/encryption');
-  const SecureStore = await import('expo-secure-store');
   await SecureStore.setItemAsync(PIN_HASH_KEY, hashPassword(pin));
 }
 
 export async function verifyPin(pin: string): Promise<boolean> {
-  const { hashPassword } = await import('../utils/encryption');
-  const SecureStore = await import('expo-secure-store');
   const expected = await SecureStore.getItemAsync(PIN_HASH_KEY);
   const valid = !!expected && expected === hashPassword(pin);
   if (valid) {
@@ -390,6 +388,82 @@ export async function authenticateOnForeground(idleTimeoutMs?: number): Promise<
   }
   biometricFailures += 1;
   return biometricFailures >= 3 ? 'pin_required' : 'not_required';
+}
+
+// ─── Biometric fallback (Issue #404) ─────────────────────────────────────────
+
+const FALLBACK_PREF_KEY = 'com.petchain.auth.biometric.fallback.pref';
+const MAX_BIOMETRIC_ATTEMPTS = 3;
+
+export type BiometricFallbackReason =
+  | 'unavailable'
+  | 'max_attempts_reached'
+  | 'user_preference';
+
+export interface BiometricLoginResult {
+  success: boolean;
+  fallbackRequired: boolean;
+  fallbackReason?: BiometricFallbackReason;
+  session?: StoredSession;
+}
+
+/**
+ * Attempt biometric login with automatic fallback after 3 failures.
+ * Persists fallback preference in SecureStore.
+ */
+export async function loginWithBiometricOrFallback(): Promise<BiometricLoginResult> {
+  const available = await isBiometricAuthenticationAvailable();
+  if (!available) {
+    return { success: false, fallbackRequired: true, fallbackReason: 'unavailable' };
+  }
+
+  const enabled = await isBiometricAuthenticationEnabled();
+  if (!enabled) {
+    return { success: false, fallbackRequired: true, fallbackReason: 'user_preference' };
+  }
+
+  // Check if user previously chose fallback
+  const pref = await SecureStore.getItemAsync(FALLBACK_PREF_KEY);
+  if (pref === 'pin') {
+    return { success: false, fallbackRequired: true, fallbackReason: 'user_preference' };
+  }
+
+  let attempts = 0;
+  while (attempts < MAX_BIOMETRIC_ATTEMPTS) {
+    const ok = await authenticateWithBiometric();
+    if (ok) {
+      biometricFailures = 0;
+      const session = await getSession();
+      if (!session) {
+        return { success: false, fallbackRequired: true, fallbackReason: 'unavailable' };
+      }
+      return { success: true, fallbackRequired: false, session };
+    }
+    attempts += 1;
+    biometricFailures += 1;
+  }
+
+  // Max attempts reached — switch to fallback
+  await SecureStore.setItemAsync(FALLBACK_PREF_KEY, 'pin');
+  return { success: false, fallbackRequired: true, fallbackReason: 'max_attempts_reached' };
+}
+
+/**
+ * Clear the fallback preference so biometrics are re-prompted on next login.
+ */
+export async function clearBiometricFallbackPreference(): Promise<void> {
+  await SecureStore.deleteItemAsync(FALLBACK_PREF_KEY);
+  biometricFailures = 0;
+}
+
+/**
+ * After a successful fallback login, offer to re-enable biometrics.
+ */
+export async function shouldPromptBiometricSetup(): Promise<boolean> {
+  const available = await isBiometricAuthenticationAvailable();
+  if (!available) return false;
+  const pref = await SecureStore.getItemAsync(FALLBACK_PREF_KEY);
+  return pref === 'pin';
 }
 
 export function setInMemorySecret(secret: string | null): void {

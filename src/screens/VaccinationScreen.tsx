@@ -14,10 +14,15 @@ import {
 import { scheduleVaccinationReminder } from '../services/notificationService';
 import {
   type VaccinationReminder,
-  exportVaccinationCertificate,
   getVaccinationReminders,
   markVaccinationAdministered,
 } from '../services/vaccinationService';
+import {
+  anchorCertificateToStellar,
+  generateVaccinationCertificate,
+  shareCertificate,
+  type PetCertificateInfo,
+} from '../services/pdfService';
 import { formatLocalDate } from '../utils/dateLocale';
 import { useSecureScreen } from '../utils/secureScreen';
 
@@ -115,12 +120,33 @@ const VaccinationScreen: React.FC<VaccinationScreenProps> = ({ petId: initialPet
       return;
     }
     try {
-      const certificate = await exportVaccinationCertificate(petId.trim());
-      Alert.alert('Vaccination Certificate', certificate.slice(0, 900));
+      const petInfo: PetCertificateInfo = {
+        petId: petId.trim(),
+        petName: petId.trim(), // use petId as name fallback; real app would fetch pet profile
+        species: 'dog',
+        ownerName: 'Pet Owner',
+      };
+
+      const cert = await generateVaccinationCertificate(petInfo, reminders);
+
+      // Anchor hash to Stellar (non-blocking)
+      void anchorCertificateToStellar(cert.hash);
+
+      Alert.alert(
+        'Certificate Generated',
+        `Certificate ID: ${cert.hash}\n\nWould you like to share it?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Share',
+            onPress: () => void shareCertificate(cert.filePath),
+          },
+        ],
+      );
     } catch (error) {
       Alert.alert(
         'Vaccinations',
-        error instanceof Error ? error.message : 'Unable to export certificate.',
+        error instanceof Error ? error.message : 'Unable to generate certificate.',
       );
     }
   };

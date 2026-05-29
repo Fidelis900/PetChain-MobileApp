@@ -22,6 +22,12 @@ import {
   saveMedication,
   scheduleRefillReminder,
 } from '../services/medicationService';
+import {
+  checkDrugInteractions,
+  getSeverityLabel,
+  recordVetOverride,
+  type InteractionCheckResult,
+} from '../services/drugInteractionService';
 import { scheduleMedicationReminder } from '../services/notificationService';
 import { formatLocalDate, formatLocalTime } from '../utils/dateLocale';
 import { useSecureScreen } from '../utils/secureScreen';
@@ -67,6 +73,10 @@ const MedicationScreen: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingMed, setEditingMed] = useState<Medication | null>(null);
   const [form, setForm] = useState<Omit<Medication, 'id'>>(EMPTY_FORM);
+  const [interactionResult, setInteractionResult] = useState<InteractionCheckResult | null>(null);
+  const [vetOverrideMode, setVetOverrideMode] = useState(false);
+  const [vetId, setVetId] = useState('');
+  const [overrideJustification, setOverrideJustification] = useState('');
 
   const loadData = useCallback(async () => {
     const [meds, logs] = await Promise.all([getMedications(), getDoseLogs()]);
@@ -95,6 +105,33 @@ const MedicationScreen: React.FC = () => {
       Alert.alert('Validation', 'Pet ID, name, and dosage are required.');
       return;
     }
+
+    // Check drug interactions when adding a new medication
+    if (!editingMed) {
+      const existingNames = medications
+        .filter((m) => m.petId === form.petId.trim())
+        .map((m) => m.name);
+      const result = await checkDrugInteractions(form.name.trim(), existingNames);
+      if (result.hasInteractions && !vetOverrideMode) {
+        setInteractionResult(result);
+        return; // block save until user acknowledges or vet overrides
+      }
+      if (result.hasInteractions && vetOverrideMode) {
+        if (!vetId.trim() || !overrideJustification.trim()) {
+          Alert.alert('Override Required', 'Vet ID and justification are required to override.');
+          return;
+        }
+        for (const interaction of result.interactions) {
+          await recordVetOverride({
+            drugA: interaction.drugA,
+            drugB: interaction.drugB,
+            vetId: vetId.trim(),
+            justification: overrideJustification.trim(),
+          });
+        }
+      }
+    }
+
     const med: Medication = {
       ...form,
       id: editingMed?.id ?? Date.now().toString(),
@@ -105,6 +142,10 @@ const MedicationScreen: React.FC = () => {
     await saveMedication(med);
     await scheduleRefillReminder(med);
     await scheduleMedicationReminder(med);
+    setInteractionResult(null);
+    setVetOverrideMode(false);
+    setVetId('');
+    setOverrideJustification('');
     closeModal();
     void loadData();
   };
@@ -429,6 +470,47 @@ const MedicationScreen: React.FC = () => {
               <Text style={styles.saveBtnText}>Save</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Drug interaction warning */}
+          {interactionResult?.hasInteractions && (
+            <View style={styles.interactionWarning}>
+              <Text style={styles.interactionTitle}>⚠️ Drug Interaction Detected</Text>
+              {interactionResult.interactions.map((i, idx) => (
+                <View key={idx} style={styles.interactionItem}>
+                  <Text style={styles.interactionSeverity}>{getSeverityLabel(i.severity)}</Text>
+                  <Text style={styles.interactionDesc}>{i.description}</Text>
+                  <Text style={styles.interactionRec}>{i.recommendation}</Text>
+                </View>
+              ))}
+              {!vetOverrideMode ? (
+                <TouchableOpacity
+                  style={styles.overrideBtn}
+                  onPress={() => setVetOverrideMode(true)}
+                >
+                  <Text style={styles.overrideBtnText}>Vet Override</Text>
+                </TouchableOpacity>
+              ) : (
+                <View>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Vet ID *"
+                    value={vetId}
+                    onChangeText={setVetId}
+                  />
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    placeholder="Justification for override *"
+                    multiline
+                    value={overrideJustification}
+                    onChangeText={setOverrideJustification}
+                  />
+                  <TouchableOpacity style={styles.saveBtn} onPress={() => void handleSave()}>
+                    <Text style={styles.saveBtnText}>Save with Override</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          )}
         </ScrollView>
       </View>
     </Modal>
@@ -614,6 +696,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   saveBtnText: { color: '#fff', fontWeight: '600' },
+  interactionWarning: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: '#FFF3CD',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FFCA28',
+  },
+  interactionTitle: { fontSize: 15, fontWeight: '700', color: '#7B4F00', marginBottom: 8 },
+  interactionItem: { marginBottom: 10 },
+  interactionSeverity: { fontWeight: '700', fontSize: 13, marginBottom: 2 },
+  interactionDesc: { fontSize: 13, color: '#333', marginBottom: 2 },
+  interactionRec: { fontSize: 12, color: '#555', fontStyle: 'italic' },
+  overrideBtn: {
+    marginTop: 8,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#E53935',
+    alignItems: 'center',
+  },
+  overrideBtnText: { color: '#fff', fontWeight: '700' },
 });
 
 export default MedicationScreen;
