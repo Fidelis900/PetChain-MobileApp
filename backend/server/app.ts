@@ -45,6 +45,7 @@ import appRouter from './routes/app';
 import { attachAudit } from '../middleware/auditLog';
 import anchorRouter from '../src/routes/anchor';
 import apiKeysRouter from '../src/routes/apiKeys';
+import familySharingRouter from './routes/familySharing';
 import federationRouter from '../src/routes/federation';
 import integrationsRouter from '../src/routes/integrations';
 import { authRateLimiter, dataRateLimiter } from '../middleware/rateLimiter';
@@ -81,12 +82,24 @@ export function createApp(): Express {
 
   const api = express.Router();
 
+  // Rate limiting — public: 30 req/min per IP; authenticated routes use authRateLimiter
+  api.use(publicRateLimiter);
+
+  // Authenticated routes get a higher limit (300 req/min per user)
+  // Applied after authenticateJWT so req.user is available for key generation
+  api.use((req, res, next) => {
+    if ((req as import('../middleware/auth').AuthenticatedRequest).user) {
+      return authRateLimiter(req, res, next);
+    }
+    next();
+  });
+
   // --- Cache metrics (unauthenticated) ----------------------------------------
   api.get('/cache/metrics', (_req, res) => {
     res.json(getCacheMetrics());
   });
 
-  // --- Health & readiness probes (unauthenticated) -----------------------
+  // --- Health & readiness probes (unauthenticated, exempt from rate limiting) --
   api.get('/health', (_req, res) => {
     res.json({ ok: true, service: 'petchain-api', timestamp: new Date().toISOString() });
   });
@@ -109,6 +122,7 @@ export function createApp(): Express {
   api.use('/analytics', dataRateLimiter, analyticsRouter);
   api.use('/anchor', anchorRouter);
   api.use('/backups', dataRateLimiter, backupsRouter);
+  api.use('/family-sharing', familySharingRouter);
   api.use('/federation', federationRouter);
   api.use('/users', authRateLimiter, usersRouter);
   api.use('/pets', dataRateLimiter, petsRouter);
