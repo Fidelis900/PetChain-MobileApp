@@ -41,6 +41,8 @@
     "prepare": "husky",
     "storybook": "STORYBOOK_ENABLED=true expo start",
     "storybook:generate": "sb-rn-get-stories",
+    "storybook:build": "sb-rn-get-stories && echo 'Storybook stories generated successfully'",
+    "storybook:ci": "npm run storybook:build",
     "migrate": "ts-node backend/src/db/migrate.ts",
     "seed": "ts-node backend/seeds/index.ts",
     "seed:dev": "ts-node backend/seeds/index.ts --owners 5 --vets 3 --pets 2 --records 3 --appointments 2 --medications 1",

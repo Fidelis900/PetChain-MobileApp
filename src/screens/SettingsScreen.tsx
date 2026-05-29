@@ -148,6 +148,7 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
 
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [exportRequesting, setExportRequesting] = useState(false);
 
   // ── Load profile on mount ──────────────────────────────────────────────────
 
@@ -285,6 +286,55 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
     },
     [t],
   );
+
+  // ── Data Export ────────────────────────────────────────────────────────────
+
+  const handleRequestDataExport = useCallback(async () => {
+    Alert.alert(
+      t('settings.exportDataTitle', 'Export Your Data'),
+      t(
+        'settings.exportDataMessage',
+        'We will prepare a complete export of all your PetChain data (pets, records, appointments, medications) in JSON and PDF formats. You will receive an email with a download link when ready (expires in 48 hours).',
+      ),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('settings.requestExport', 'Request Export'),
+          onPress: async () => {
+            setExportRequesting(true);
+            try {
+              const response = await fetch('/api/privacy/export', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+              });
+
+              if (!response.ok) {
+                throw new Error('Export request failed');
+              }
+
+              const result = await response.json();
+
+              Alert.alert(
+                t('common.success', 'Success'),
+                result.data?.message ||
+                  t(
+                    'settings.exportRequested',
+                    'Your data export has been queued. You will receive an email when ready.',
+                  ),
+              );
+            } catch (err) {
+              Alert.alert(
+                t('common.error'),
+                err instanceof Error ? err.message : t('settings.exportFailed', 'Export request failed'),
+              );
+            } finally {
+              setExportRequesting(false);
+            }
+          },
+        },
+      ],
+    );
+  }, [t]);
 
   // ── Logout ─────────────────────────────────────────────────────────────────
 
@@ -558,6 +608,24 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
         <LanguageSelector />
       </View>
 
+      {/* ── Privacy & Data ── */}
+      <SectionHeader title={t('settings.privacyData', 'Privacy & Data')} />
+      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <TouchableOpacity style={styles.row} onPress={() => void handleRequestDataExport()}>
+          <Text style={[styles.rowLabel, { color: colors.text }]}>
+            {t('settings.exportData', 'Export My Data')}
+          </Text>
+          <Text style={[styles.chevron, { color: colors.placeholder }]}>›</Text>
+        </TouchableOpacity>
+        <RowSeparator />
+        <TouchableOpacity style={styles.row} onPress={() => void Linking.openURL(PRIVACY_URL)}>
+          <Text style={[styles.rowLabel, { color: colors.text }]}>
+            {t('settings.privacyPolicy')}
+          </Text>
+          <Text style={[styles.chevron, { color: colors.placeholder }]}>›</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* ── App Information ── */}
       <SectionHeader title={t('settings.appInfo')} />
       <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -574,13 +642,6 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
         <TouchableOpacity style={styles.row} onPress={() => void Linking.openURL(TERMS_URL)}>
           <Text style={[styles.rowLabel, { color: colors.text }]}>
             {t('settings.termsOfService')}
-          </Text>
-          <Text style={[styles.chevron, { color: colors.placeholder }]}>›</Text>
-        </TouchableOpacity>
-        <RowSeparator />
-        <TouchableOpacity style={styles.row} onPress={() => void Linking.openURL(PRIVACY_URL)}>
-          <Text style={[styles.rowLabel, { color: colors.text }]}>
-            {t('settings.privacyPolicy')}
           </Text>
           <Text style={[styles.chevron, { color: colors.placeholder }]}>›</Text>
         </TouchableOpacity>
