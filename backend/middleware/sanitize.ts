@@ -19,12 +19,8 @@ export function sanitizeInputs(req: Request, res: Response, next: NextFunction):
         Object.keys(req.query).forEach((k) => delete (req.query as any)[k]);
         Object.assign(req.query as any, sanitized);
       } catch {
-        // eslint-disable-next-line no-param-reassign
         req.query = sanitized;
       }
-      const sanitized = sanitizeObject(req.query) as Record<string, unknown>;
-      Object.keys(req.query).forEach((k) => delete (req.query as Record<string, unknown>)[k]);
-      Object.assign(req.query, sanitized);
     }
     if (req.params && typeof req.params === 'object') {
       const sanitized = sanitizeObject(req.params) as typeof req.params;
@@ -32,11 +28,8 @@ export function sanitizeInputs(req: Request, res: Response, next: NextFunction):
         Object.keys(req.params).forEach((k) => delete (req.params as any)[k]);
         Object.assign(req.params as any, sanitized);
       } catch {
-        // eslint-disable-next-line no-param-reassign
         req.params = sanitized;
       }
-      const sanitized = sanitizeObject(req.params) as Record<string, string>;
-      Object.assign(req.params, sanitized);
     }
     next();
   } catch (err) {

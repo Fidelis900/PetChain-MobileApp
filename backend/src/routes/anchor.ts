@@ -29,10 +29,11 @@ router.post('/deposit', async (req: AuthenticatedRequest, res: Response) => {
 
   const SUPPORTED_CURRENCIES = ['USD', 'EUR'];
   if (!SUPPORTED_CURRENCIES.includes(currency.toUpperCase())) {
-    return res.status(400).json({ error: `Unsupported currency. Supported: ${SUPPORTED_CURRENCIES.join(', ')}` });
+    return res
+      .status(400)
+      .json({ error: `Unsupported currency. Supported: ${SUPPORTED_CURRENCIES.join(', ')}` });
   }
 
-  const userId = req.user!.id;
   const result = await stellarAnchorService.initiateDeposit(
     userId,
     walletAddress,

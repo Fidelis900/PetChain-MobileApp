@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 
+import type { ApiKey, ApiKeyUsageRecord } from '../models/ApiKey';
 import { AppointmentStatus, AppointmentType } from '../models/Appointment';
 import { UserRole } from '../models/UserRole';
 
@@ -256,6 +257,9 @@ export interface StoredTravelCertificate {
 
 const travelCertificates = new Map<string, StoredTravelCertificate>();
 
+const apiKeys = new Map<string, ApiKey>();
+const apiKeyUsage: ApiKeyUsageRecord[] = [];
+
 export function newId(): string {
   return randomUUID();
 }
@@ -266,5 +270,7 @@ export const store = {
   petQrIdentities,
   emergencySessions,
   travelCertificates,
+  apiKeys,
+  apiKeyUsage,
   newId,
 };

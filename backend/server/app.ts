@@ -5,25 +5,24 @@ import express, { type Express, type NextFunction, type Request, type Response }
 
 import { errBody } from './response';
 import { getRedisClient } from '../config/redis';
+import performanceLogger from '../middleware/performanceLogger';
 import { createRedisSessionMiddleware } from '../middleware/redisSession';
+import { requestLogger } from '../middleware/requestLogger';
 import { sanitizeInputs } from '../middleware/sanitize';
 import { applySecurityHeaders } from '../middleware/securityHeaders';
-import authRouter from './routes/auth';
-import { requestLogger } from '../middleware/requestLogger';
-import logger from '../utils/logger';
 import { getCacheMetrics, warmCache } from '../services/cacheService';
-import anchorRouter from '../src/routes/anchor';
+import logger from '../utils/logger';
 import analyticsRouter from './routes/analytics';
-import performanceLogger from '../middleware/performanceLogger';
 import appointmentsRouter from './routes/appointments';
 import auditLogsRouter from './routes/auditLogs';
 import auditTrailRouter from './routes/auditTrail';
+import authRouter from './routes/auth';
 import backupsRouter from './routes/backups';
 import breedsRouter from './routes/breeds';
 import communityRouter from './routes/community';
-import forumRouter from './routes/forum';
 import docsRouter from './routes/docs';
 import emergencyRouter from './routes/emergency';
+import forumRouter from './routes/forum';
 import importRouter from './routes/import';
 import insuranceRouter from './routes/insurance';
 import medicalRecordsRouter from './routes/medicalRecords';
@@ -32,18 +31,21 @@ import paymentsRouter from './routes/payments';
 import petsRouter from './routes/pets';
 import photosRouter from './routes/photos';
 import privacyRouter from './routes/privacy';
+import reconciliationRouter from './routes/reconciliation';
 import reportsRouter from './routes/reports';
 import searchRouter from './routes/search';
 import syncRouter from './routes/sync';
-import travelCertificatesRouter from './routes/travelCertificates';
 import telemedicineRouter from './routes/telemedicine';
-import reconciliationRouter from './routes/reconciliation';
+import travelCertificatesRouter from './routes/travelCertificates';
 import usersRouter from './routes/users';
 import vaccinationsRouter from './routes/vaccinations';
 import vetsRouter from './routes/vets';
 import vitalsRouter from './routes/vitals';
 import { attachAudit } from '../middleware/auditLog';
+import anchorRouter from '../src/routes/anchor';
+import apiKeysRouter from '../src/routes/apiKeys';
 import federationRouter from '../src/routes/federation';
+import integrationsRouter from '../src/routes/integrations';
 
 // Readiness probe state — set to false while the process is draining
 let isReady = true;
@@ -72,6 +74,8 @@ export function createApp(): Express {
     '/.well-known',
     express.static(path.join(__dirname, '../.well-known'), { dotfiles: 'allow' }),
   );
+
+  app.use('/admin', express.static(path.join(__dirname, '../public/admin')));
 
   const api = express.Router();
 
@@ -130,6 +134,8 @@ export function createApp(): Express {
   api.use('/insurance', insuranceRouter);
   api.use('/search', searchRouter);
   api.use('/vitals', vitalsRouter);
+  api.use('/api-keys', apiKeysRouter);
+  api.use('/integrations', integrationsRouter);
 
   app.use('/api', api);
 
