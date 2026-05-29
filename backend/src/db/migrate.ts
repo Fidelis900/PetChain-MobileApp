@@ -4,7 +4,7 @@ import path from 'path';
 
 import { query, closePool } from './index';
 
-const MIGRATIONS_DIR = path.join(__dirname, '../../migrations');
+const MIGRATIONS_DIR = path.join(__dirname, '../../migrations/legacy');
 const ROLLBACK_DIR = path.join(MIGRATIONS_DIR, 'rollback');
 
 // Ordered list of all migration files
