@@ -16,6 +16,7 @@ const MIGRATION_FILES = [
   '005_community_and_health_metrics.sql',
   '006_audit_trail.sql',
   '009_pet_weight.sql',
+  '010_api_keys.sql',
   '20260528_create_forum_tables.sql',
 ];
 

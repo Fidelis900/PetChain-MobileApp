@@ -19,7 +19,6 @@ export function sanitizeInputs(req: Request, res: Response, next: NextFunction):
         Object.keys(req.query).forEach((k) => delete (req.query as any)[k]);
         Object.assign(req.query as any, sanitized);
       } catch {
-        // eslint-disable-next-line no-param-reassign
         req.query = sanitized;
       }
     }
@@ -29,7 +28,6 @@ export function sanitizeInputs(req: Request, res: Response, next: NextFunction):
         Object.keys(req.params).forEach((k) => delete (req.params as any)[k]);
         Object.assign(req.params as any, sanitized);
       } catch {
-        // eslint-disable-next-line no-param-reassign
         req.params = sanitized;
       }
     }
