@@ -66,6 +66,16 @@ export interface StoredAppointment {
   updatedAt: string;
   cancelledAt?: string;
   cancellationReason?: string;
+  isTelemedicine?: boolean;
+  videoCallUrl?: string;
+  videoProvider?: 'jitsi' | 'zoom';
+  timeZone?: string;
+  questionnaireDueAt?: string;
+  questionnaireSentAt?: string;
+  questionnaireRespondedAt?: string;
+  questionnaireResponses?: Record<string, string>;
+  noShowReportedAt?: string;
+  rescheduledFrom?: string;
 }
 
 export interface StoredBackup {

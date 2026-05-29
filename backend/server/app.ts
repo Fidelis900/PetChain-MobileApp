@@ -25,6 +25,7 @@ import privacyRouter from './routes/privacy';
 import searchRouter from './routes/search';
 import syncRouter from './routes/sync';
 import travelCertificatesRouter from './routes/travelCertificates';
+import telemedicineRouter from './routes/telemedicine';
 import usersRouter from './routes/users';
 import vaccinationsRouter from './routes/vaccinations';
 import vetsRouter from './routes/vets';
@@ -77,6 +78,7 @@ export function createApp(): Express {
   api.use('/pets', petsRouter);
   api.use('/medical-records', medicalRecordsRouter);
   api.use('/appointments', appointmentsRouter);
+  api.use('/telemedicine', telemedicineRouter);
   api.use('/medications', medicationsRouter);
   api.use('/vaccinations', vaccinationsRouter);
   api.use('/import', importRouter);

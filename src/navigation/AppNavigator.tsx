@@ -33,6 +33,7 @@ import TravelCertificateScreen from '../screens/TravelCertificateScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import QRScannerScreen from '../screens/QRScannerScreen';
 import VaccinationScreen from '../screens/VaccinationScreen';
+import TelemedicineScreen from '../screens/TelemedicineScreen';
 import analyticsService from '../services/analyticsService';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
@@ -205,6 +206,11 @@ function MainTabs() {
         name="Vaccinations"
         component={VaccinationScreen}
         options={{ title: 'Vaccinations' }}
+      />
+      <Tab.Screen
+        name="Telemedicine"
+        component={TelemedicineScreen}
+        options={{ title: 'Telemedicine' }}
       />
       <Tab.Screen name="Community" component={CommunityScreen} options={{ title: 'Community' }} />
       <Tab.Screen

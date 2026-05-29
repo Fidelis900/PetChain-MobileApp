@@ -22,6 +22,7 @@ export type MainTabParamList = {
   Medications: undefined;
   Appointments: undefined;
   Vaccinations: undefined;
+  Telemedicine: undefined;
   Community: undefined;
   Emergency: undefined;
   Profile: undefined;
