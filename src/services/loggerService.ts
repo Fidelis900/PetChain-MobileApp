@@ -1,14 +1,5 @@
-<<<<<<< HEAD
-import * as Sentry from '@sentry/react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-
-interface LogConfig {
-  enableRemote?: boolean;
-  remoteUrl?: string;
-  isDevelopment?: boolean;
-  sentryDsn?: string;
-=======
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -19,25 +10,22 @@ export interface LogEntry {
   timestamp: string;
   context?: Record<string, unknown>;
   error?: Error;
->>>>>>> d9a534e (feat: implement real-time blockchain event streaming)
 }
 
 export interface LoggerConfig {
   level: LogLevel;
   enableConsole: boolean;
-  enableFile: boolean;
-  maxFileSize: number;
-  maxFiles: number;
+  enableStorage: boolean;
+  maxStorageEntries: number;
 }
 
 // ─── Default Configuration ────────────────────────────────────────────────────
 
 const DEFAULT_CONFIG: LoggerConfig = {
-  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+  level: __DEV__ ? 'debug' : 'info',
   enableConsole: true,
-  enableFile: false, // Disabled for React Native compatibility
-  maxFileSize: 10 * 1024 * 1024, // 10MB
-  maxFiles: 5,
+  enableStorage: true,
+  maxStorageEntries: 500,
 };
 
 // ─── Log Level Priority ───────────────────────────────────────────────────────
@@ -49,28 +37,27 @@ const LOG_LEVELS: Record<LogLevel, number> = {
   error: 3,
 };
 
+// ─── Storage Keys ─────────────────────────────────────────────────────────────
+
+const STORAGE_KEY = '@petchain_logs';
+
 // ─── Logger Service ───────────────────────────────────────────────────────────
 
 class LoggerService {
   private config: LoggerConfig;
   private logBuffer: LogEntry[] = [];
   private readonly maxBufferSize = 1000;
+  private storageInitialized = false;
 
   constructor(config?: Partial<LoggerConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.initializeStorage();
   }
 
-<<<<<<< HEAD
-  private formatLog(level: LogLevel, message: string, data?: unknown): string {
-    const timestamp = new Date().toISOString();
-    const dataStr = data ? ` | ${JSON.stringify(data)}` : '';
-    return `[${timestamp}] [${level.toUpperCase()}] ${message}${dataStr}`;
-=======
   // ─── Public Logging Methods ───────────────────────────────────────────────────
 
   debug(message: string, context?: Record<string, unknown>): void {
     this.log('debug', message, context);
->>>>>>> d9a534e (feat: implement real-time blockchain event streaming)
   }
 
   info(message: string, context?: Record<string, unknown>): void {
@@ -98,17 +85,6 @@ class LoggerService {
       return;
     }
 
-<<<<<<< HEAD
-  private async sendToRemote(level: LogLevel, formattedLog: string, data?: unknown): Promise<void> {
-    // Send to Sentry if it's an error or warning
-    if (level === 'error') {
-      Sentry.captureException(data instanceof Error ? data : new Error(formattedLog));
-    } else if (level === 'warn') {
-      Sentry.captureMessage(formattedLog, 'warning');
-    }
-
-    if (!this.config.enableRemote || !this.config.remoteUrl) return;
-=======
     const logEntry: LogEntry = {
       level,
       message,
@@ -116,7 +92,6 @@ class LoggerService {
       context,
       error,
     };
->>>>>>> d9a534e (feat: implement real-time blockchain event streaming)
 
     // Add to buffer
     this.addToBuffer(logEntry);
@@ -125,36 +100,15 @@ class LoggerService {
     if (this.config.enableConsole) {
       this.logToConsole(logEntry);
     }
+
+    // Store to AsyncStorage if enabled
+    if (this.config.enableStorage && this.storageInitialized) {
+      this.logToStorage(logEntry).catch(err => {
+        console.warn('Failed to store log entry:', err);
+      });
+    }
   }
 
-<<<<<<< HEAD
-  debug(message: string, data?: unknown): void {
-    if (!this.shouldLog('debug')) return;
-    const formatted = this.formatLog('debug', message, data);
-    console.warn(formatted);
-    this.sendToRemote('debug', formatted, data);
-  }
-
-  info(message: string, data?: unknown): void {
-    if (!this.shouldLog('info')) return;
-    const formatted = this.formatLog('info', message, data);
-    console.warn(formatted);
-    this.sendToRemote('info', formatted, data);
-  }
-
-  warn(message: string, data?: unknown): void {
-    if (!this.shouldLog('warn')) return;
-    const formatted = this.formatLog('warn', message, data);
-    console.warn(formatted);
-    this.sendToRemote('warn', formatted, data);
-  }
-
-  error(message: string, data?: unknown): void {
-    if (!this.shouldLog('error')) return;
-    const formatted = this.formatLog('error', message, data);
-    console.error(formatted);
-    this.sendToRemote('error', formatted, data);
-=======
   // ─── Console Output ───────────────────────────────────────────────────────────
 
   private logToConsole(entry: LogEntry): void {
@@ -192,6 +146,45 @@ class LoggerService {
     }
   }
 
+  // ─── Storage Management ───────────────────────────────────────────────────────
+
+  private async initializeStorage(): Promise<void> {
+    try {
+      // Load existing logs from storage
+      const storedLogs = await AsyncStorage.getItem(STORAGE_KEY);
+      if (storedLogs) {
+        const parsedLogs = JSON.parse(storedLogs) as LogEntry[];
+        this.logBuffer = parsedLogs.slice(-this.maxBufferSize);
+      }
+      this.storageInitialized = true;
+    } catch (error) {
+      console.warn('Failed to initialize log storage:', error);
+      this.storageInitialized = false;
+    }
+  }
+
+  private async logToStorage(entry: LogEntry): Promise<void> {
+    try {
+      // Get current logs from storage
+      const storedLogs = await AsyncStorage.getItem(STORAGE_KEY);
+      let logs: LogEntry[] = storedLogs ? JSON.parse(storedLogs) : [];
+      
+      // Add new entry
+      logs.push(entry);
+      
+      // Trim to max entries
+      if (logs.length > this.config.maxStorageEntries) {
+        logs = logs.slice(-this.config.maxStorageEntries);
+      }
+      
+      // Save back to storage
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
+    } catch (error) {
+      // Don't log this error to avoid infinite recursion
+      console.warn('Failed to store log entry:', error);
+    }
+  }
+
   // ─── Buffer Management ────────────────────────────────────────────────────────
 
   private addToBuffer(entry: LogEntry): void {
@@ -210,7 +203,6 @@ class LoggerService {
    */
   getRecentLogs(count: number = 100): LogEntry[] {
     return this.logBuffer.slice(-count);
->>>>>>> d9a534e (feat: implement real-time blockchain event streaming)
   }
 
   /**
@@ -223,10 +215,52 @@ class LoggerService {
   }
 
   /**
+   * Get logs from storage
+   */
+  async getStoredLogs(count: number = 100): Promise<LogEntry[]> {
+    try {
+      const storedLogs = await AsyncStorage.getItem(STORAGE_KEY);
+      if (storedLogs) {
+        const parsedLogs = JSON.parse(storedLogs) as LogEntry[];
+        return parsedLogs.slice(-count);
+      }
+      return [];
+    } catch (error) {
+      console.warn('Failed to retrieve stored logs:', error);
+      return [];
+    }
+  }
+
+  /**
    * Clear the log buffer
    */
   clearBuffer(): void {
     this.logBuffer = [];
+  }
+
+  /**
+   * Clear stored logs
+   */
+  async clearStoredLogs(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(STORAGE_KEY);
+      this.logBuffer = [];
+    } catch (error) {
+      console.warn('Failed to clear stored logs:', error);
+    }
+  }
+
+  /**
+   * Export logs as JSON string
+   */
+  async exportLogs(): Promise<string> {
+    try {
+      const storedLogs = await AsyncStorage.getItem(STORAGE_KEY);
+      return storedLogs || '[]';
+    } catch (error) {
+      console.warn('Failed to export logs:', error);
+      return JSON.stringify(this.logBuffer);
+    }
   }
 
   /**
