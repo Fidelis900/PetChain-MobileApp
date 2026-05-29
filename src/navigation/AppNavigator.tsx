@@ -29,6 +29,7 @@ import PetListScreen from '../screens/PetListScreen';
 import PetShareScreen from '../screens/PetShareScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import QRScannerScreen from '../screens/QRScannerScreen';
+import FiatOnRampScreen from '../screens/FiatOnRampScreen';
 import analyticsService from '../services/analyticsService';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
@@ -278,6 +279,11 @@ export default function AppNavigator() {
               name="Payment"
               component={PaymentScreen}
               options={{ headerShown: true, title: 'Premium Plans' }}
+            />
+            <RootStack.Screen
+              name="FiatOnRamp"
+              component={FiatOnRampScreen}
+              options={{ headerShown: true, title: 'Fund Your Wallet' }}
             />
           </RootStack.Group>
         </RootStack.Navigator>

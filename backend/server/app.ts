@@ -5,6 +5,7 @@ import { errBody } from './response';
 import { applySecurityHeaders } from '../middleware/securityHeaders';
 import { sanitizeInputs } from '../middleware/sanitize';
 import { createRedisSessionMiddleware } from '../middleware/redisSession';
+import anchorRouter from '../src/routes/anchor';
 import analyticsRouter from './routes/analytics';
 import appointmentsRouter from './routes/appointments';
 import auditLogsRouter from './routes/auditLogs';
@@ -66,6 +67,7 @@ export function createApp(): Express {
 
   // --- Application routes ------------------------------------------------
   api.use('/analytics', analyticsRouter);
+  api.use('/anchor', anchorRouter);
   api.use('/backups', backupsRouter);
   api.use('/users', usersRouter);
   api.use('/pets', petsRouter);
