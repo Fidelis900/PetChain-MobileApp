@@ -9,8 +9,8 @@ import type { RootStackParamList, MainTabParamList, PetStackParamList } from './
 import { DEEP_LINK_PREFIX } from './types';
 import type { Pet } from '../models/Pet';
 import AppointmentScreen from '../screens/AppointmentScreen';
-import AuthNavigator from '../screens/AuthNavigator';
 import AuditHistoryScreen from '../screens/AuditHistoryScreen';
+import AuthNavigator from '../screens/AuthNavigator';
 import CommunityScreen from '../screens/CommunityScreen';
 import DeleteAccountScreen from '../screens/DeleteAccountScreen';
 import EmergencyContactsScreen from '../screens/EmergencyContactsScreen';
@@ -27,6 +27,7 @@ import PetFormScreen from '../screens/PetFormScreen';
 import PetHealthDashboardScreen from '../screens/PetHealthDashboardScreen';
 import PetHealthMetricsScreen from '../screens/PetHealthMetricsScreen';
 import PetListScreen from '../screens/PetListScreen';
+import PetProfileScreen from '../screens/PetProfileScreen';
 import PetShareScreen from '../screens/PetShareScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import QRScannerScreen from '../screens/QRScannerScreen';
@@ -65,6 +66,7 @@ function PetNavigator() {
                 title: `${petName} • Audit`,
               })
             }
+            onViewProfile={(petId) => navigation.navigate('PetProfile', { petId })}
           />
         )}
       </PetStack.Screen>
@@ -76,6 +78,11 @@ function PetNavigator() {
             title={route.params.title}
             onBack={() => navigation.goBack()}
           />
+        )}
+      </PetStack.Screen>
+      <PetStack.Screen name="PetProfile" options={{ title: 'Pet Profile' }}>
+        {({ route, navigation }) => (
+          <PetProfileScreen petId={route.params.petId} onBack={() => navigation.goBack()} />
         )}
       </PetStack.Screen>
       <PetStack.Screen name="PetHealthDashboard" options={{ title: 'Health Dashboard' }}>
@@ -207,6 +214,7 @@ const linking: LinkingOptions<RootStackParamList> = {
             screens: {
               PetListScreen: 'pets',
               PetDetail: 'pets/:petId',
+              PetProfile: 'pets/:petId/profile',
               PetHealthDashboard: 'pets/:petId/dashboard',
               PetHealthMetrics: 'pets/:petId/health',
               PetForm: 'pets/form/:petId?',

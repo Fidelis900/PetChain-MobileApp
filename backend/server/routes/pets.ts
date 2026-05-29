@@ -3,12 +3,12 @@ import crypto from 'crypto';
 
 import express from 'express';
 
+import { logAuditTrail } from '../../middleware/auditLogger';
 import { authenticateJWT, type AuthenticatedRequest } from '../../middleware/auth';
 import { UserRole } from '../../models/UserRole';
 import { petRepository } from '../../src/repositories/petRepository';
 import { type DBPet } from '../../src/repositories/petRepository';
 import { userRepository } from '../../src/repositories/userRepository';
-import { logAuditTrail } from '../../middleware/auditLogger';
 import { ok, sendError } from '../response';
 import { type StoredMedicalRecord, type StoredPet, store } from '../store';
 
@@ -32,6 +32,7 @@ function emergencyPetView(pet: StoredPet | DBPet) {
     name: pet.name,
     species: pet.species,
     breed: pet.breed,
+    weightKg: 'weight_kg' in pet ? pet.weight_kg : row?.weightKg,
     microchipId: 'microchip_id' in pet ? pet.microchip_id : row?.microchipId,
     photoUrl: 'photo_url' in pet ? pet.photo_url : row?.photoUrl,
     emergencyNotes: [...store.medicalRecords.values()]
@@ -60,6 +61,7 @@ async function toPetResponse(p: StoredPet | DBPet) {
     species: p.species,
     breed: p.breed,
     dateOfBirth: 'date_of_birth' in p ? p.date_of_birth : (p as StoredPet).dateOfBirth,
+    weightKg: 'weight_kg' in p ? p.weight_kg : (p as StoredPet).weightKg,
     microchipId: 'microchip_id' in p ? p.microchip_id : (p as StoredPet).microchipId,
     photoUrl: 'photo_url' in p ? p.photo_url : (p as StoredPet).photoUrl,
     thumbnailUrl: 'thumbnail_url' in p ? p.thumbnail_url : (p as StoredPet).thumbnailUrl,
@@ -253,8 +255,17 @@ router.get('/:id', (req: AuthenticatedRequest, res) => {
 });
 
 router.post('/', async (req: AuthenticatedRequest, res) => {
-  const { name, species, breed, dateOfBirth, microchipId, photoUrl, thumbnailUrl, ownerId } =
-    req.body as Partial<StoredPet & { thumbnailUrl?: string }>;
+  const {
+    name,
+    species,
+    breed,
+    dateOfBirth,
+    weightKg,
+    microchipId,
+    photoUrl,
+    thumbnailUrl,
+    ownerId,
+  } = req.body as Partial<StoredPet & { thumbnailUrl?: string }>;
   if (!name?.trim() || !species?.trim() || !ownerId?.trim()) {
     return sendError(res, 400, 'VALIDATION_ERROR', 'name, species, and ownerId are required');
   }
@@ -280,6 +291,7 @@ router.post('/', async (req: AuthenticatedRequest, res) => {
     species: species.trim(),
     breed: breed?.trim(),
     date_of_birth: dateOfBirth ? new Date(dateOfBirth) : undefined,
+    weight_kg: typeof weightKg === 'number' ? weightKg : undefined,
     microchip_id: microchipId?.trim(),
     photo_url: photoUrl?.trim(),
     thumbnail_url: thumbnailUrl?.trim(),
@@ -317,6 +329,7 @@ router.put('/:id', (req: AuthenticatedRequest, res) => {
     ...(body.dateOfBirth !== undefined
       ? { dateOfBirth: body.dateOfBirth ? String(body.dateOfBirth) : undefined }
       : {}),
+    ...(body.weightKg !== undefined ? { weightKg: body.weightKg } : {}),
     ...(body.microchipId !== undefined
       ? { microchipId: body.microchipId ? String(body.microchipId) : undefined }
       : {}),
