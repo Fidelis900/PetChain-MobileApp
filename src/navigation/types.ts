@@ -9,6 +9,7 @@ export type RootStackParamList = {
   Onboarding: undefined;
   Auth: undefined;
   Main: undefined;
+  Forum: undefined;
   // Modals
   QRScanner: undefined;
   ManualEntry: undefined;
