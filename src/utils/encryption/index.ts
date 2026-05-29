@@ -14,4 +14,4 @@ export {
   authenticateWithBiometricGate,
   disableBiometricAuthentication,
 } from './keychain';
-export { encrypt, decrypt, hashPassword } from './crypto';
+export { encrypt, decrypt, hashPassword, deriveKey } from './crypto';

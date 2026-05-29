@@ -27,6 +27,7 @@ const config = {
     baseUrl: API_URLS[APP_ENV],
     timeoutMs: Number(env('API_TIMEOUT', '10000')),
     maxRetries: 3,
+    version: '1.0',
   },
 
   app: {
@@ -53,6 +54,12 @@ const config = {
     sessionTimeoutMs: Number(env('SESSION_TIMEOUT_MS', String(30 * 60 * 1000))),
     /** Crash-free rate threshold — alert fires when rate drops below this */
     crashFreeThreshold: Number(env('CRASH_FREE_THRESHOLD', '99.5')),
+  sentry: {
+    dsn: env('SENTRY_DSN', ''),
+    enableInDev: env('SENTRY_ENABLE_IN_DEV', 'false') === 'true',
+  },
+  googlePlaces: {
+    apiKey: env('GOOGLE_PLACES_API_KEY', ''),
   },
 } as const;
 

@@ -1,7 +1,7 @@
 /**
  * Generic API response wrapper for successful responses
  */
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: true;
   data: T;
   message?: string;
@@ -16,7 +16,7 @@ export interface ApiError {
   error: {
     code: string;
     message: string;
-    details?: Record<string, any>;
+    details?: Record<string, unknown>;
     stack?: string;
   };
   timestamp: string;
@@ -37,7 +37,7 @@ export interface PaginationMeta {
 /**
  * Paginated response wrapper
  */
-export interface PaginatedResponse<T = any> {
+export interface PaginatedResponse<T = unknown> {
   success: true;
   data: T[];
   pagination: PaginationMeta;
@@ -299,6 +299,7 @@ export interface ListMedicalRecordsRequest extends PaginationParams {
   type?: string;
   startDate?: string;
   endDate?: string;
+  diagnosis?: string;
 }
 
 /**
@@ -448,6 +449,20 @@ export const API_ENDPOINTS = {
   MEDICAL_RECORDS_DELETE: '/medical-records/:id',
   MEDICAL_RECORDS_BY_PET: '/medical-records/pet/:petId',
 
+  // Appointments
+  APPOINTMENTS_LIST: '/appointments',
+  APPOINTMENTS_GET: '/appointments/:id',
+  APPOINTMENTS_CREATE: '/appointments',
+  APPOINTMENTS_UPDATE: '/appointments/:id',
+  APPOINTMENTS_DELETE: '/appointments/:id',
+
+  // Medications
+  MEDICATIONS_LIST: '/medications',
+  MEDICATIONS_GET: '/medications/:id',
+  MEDICATIONS_CREATE: '/medications',
+  MEDICATIONS_UPDATE: '/medications/:id',
+  MEDICATIONS_DELETE: '/medications/:id',
+
   // Blockchain
   BLOCKCHAIN_RECORDS_VERIFY: '/blockchain/records/verify',
   BLOCKCHAIN_RECORDS_STORE: '/blockchain/records/store',
@@ -479,8 +494,8 @@ export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 export interface ApiRequestConfig {
   method: HttpMethod;
   endpoint: string;
-  params?: Record<string, any>;
-  data?: any;
+  params?: Record<string, unknown>;
+  data?: unknown;
   headers?: Record<string, string>;
 }
 

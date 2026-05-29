@@ -1,7 +1,8 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-import { savePreferences } from './notificationService';
+import apiClient from './apiClient';
+import { getItem, setItem, removeItem } from './localDB';
+import { savePreferences, cancelAllNotifications } from './notificationService';
 import type { NotificationPreferences, User } from '../models/User';
+import { clearSecureTokens } from '../utils/encryption/keychain';
 
 const USER_PROFILE_KEY = '@user_profile';
 
@@ -15,7 +16,7 @@ const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
 };
 
 export async function getUserProfile(): Promise<User | null> {
-  const raw = await AsyncStorage.getItem(USER_PROFILE_KEY);
+  const raw = await getItem(USER_PROFILE_KEY);
   return raw ? JSON.parse(raw) : null;
 }
 
@@ -28,7 +29,7 @@ export async function saveUserProfile(profile: User): Promise<User> {
     },
   };
 
-  await AsyncStorage.setItem(USER_PROFILE_KEY, JSON.stringify(normalized));
+  await setItem(USER_PROFILE_KEY, JSON.stringify(normalized));
   await savePreferences(normalized.notificationPreferences ?? {});
   return normalized;
 }
@@ -42,13 +43,18 @@ export async function updateUserProfile(updates: Partial<Omit<User, 'id'>>): Pro
   const updated: User = {
     ...current,
     ...updates,
+    address: {
+      ...(current.address ?? {}),
+      ...(updates.address ?? {}),
+    },
+    emergencyContact: updates.emergencyContact || current.emergencyContact,
     notificationPreferences: {
       ...current.notificationPreferences,
       ...(updates.notificationPreferences ?? {}),
     },
   };
 
-  await AsyncStorage.setItem(USER_PROFILE_KEY, JSON.stringify(updated));
+  await setItem(USER_PROFILE_KEY, JSON.stringify(updated));
   if (updates.notificationPreferences) {
     await savePreferences(updated.notificationPreferences ?? {});
   }
@@ -57,5 +63,20 @@ export async function updateUserProfile(updates: Partial<Omit<User, 'id'>>): Pro
 }
 
 export async function clearUserProfile(): Promise<void> {
-  await AsyncStorage.removeItem(USER_PROFILE_KEY);
+  await removeItem(USER_PROFILE_KEY);
+}
+
+// Delete account: server-side deletion + full local cascade
+export async function deleteAccount(): Promise<void> {
+  // 1. Server-side: delete user + all associated data (pets, records, medications, appointments)
+  await apiClient.delete('/users/me');
+
+  // 2. Cancel all scheduled notifications
+  await cancelAllNotifications();
+
+  // 3. Clear local profile
+  await removeItem(USER_PROFILE_KEY);
+
+  // 4. Clear secure tokens (ends session)
+  await clearSecureTokens();
 }

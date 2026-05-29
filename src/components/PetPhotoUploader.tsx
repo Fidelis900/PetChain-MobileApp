@@ -1,31 +1,36 @@
 import React, { useState } from 'react';
-import { View, TouchableOpacity, Image, Text, Alert } from 'react-native';
+import { Alert, Text, TouchableOpacity, View } from 'react-native';
+
+import { OptimizedImage } from './OptimizedImage';
 import petService from '../services/petService';
 
 interface PetPhotoUploaderProps {
   petId: string;
   currentPhotoUrl?: string;
+  currentThumbnailUrl?: string;
   onPhotoUploaded?: (url: string) => void;
 }
 
 export const PetPhotoUploader: React.FC<PetPhotoUploaderProps> = ({
   petId,
   currentPhotoUrl,
+  currentThumbnailUrl,
   onPhotoUploaded,
 }) => {
-  const [uploading, setUploading] = useState(false);
   const [photoUrl, setPhotoUrl] = useState(currentPhotoUrl);
+  const [thumbnailUrl, setThumbnailUrl] = useState(currentThumbnailUrl);
+  const [uploading, setUploading] = useState(false);
 
   const handleUpload = async () => {
+    setUploading(true);
     try {
-      setUploading(true);
-      const url = await petService.uploadPetPhoto(petId);
-      
-      if (url) {
-        setPhotoUrl(url);
-        onPhotoUploaded?.(url);
+      const result = await petService.uploadPetPhoto(petId);
+      if (result) {
+        setPhotoUrl(result.photoUrl);
+        setThumbnailUrl(result.thumbnailUrl);
+        onPhotoUploaded?.(result.photoUrl);
       }
-    } catch (error) {
+    } catch {
       Alert.alert('Upload Failed', 'Could not upload photo. Please try again.');
     } finally {
       setUploading(false);
@@ -33,11 +38,18 @@ export const PetPhotoUploader: React.FC<PetPhotoUploaderProps> = ({
   };
 
   return (
-    <TouchableOpacity onPress={handleUpload} disabled={uploading}>
+    <TouchableOpacity
+      onPress={handleUpload}
+      disabled={uploading}
+      accessibilityRole="button"
+      accessibilityLabel={photoUrl ? 'Change pet photo' : 'Add pet photo'}
+      accessibilityHint={uploading ? 'Uploading photo' : 'Opens photo picker'}
+    >
       <View style={{ width: 120, height: 120, backgroundColor: '#f0f0f0', borderRadius: 8 }}>
         {photoUrl ? (
-          <Image 
-            source={{ uri: photoUrl }} 
+          <OptimizedImage
+            uri={photoUrl}
+            thumbnailUri={thumbnailUrl}
             style={{ width: '100%', height: '100%', borderRadius: 8 }}
             resizeMode="cover"
           />

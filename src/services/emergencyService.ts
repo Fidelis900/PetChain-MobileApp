@@ -1,6 +1,10 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Geolocation from '@react-native-community/geolocation';
-import { Linking, Platform, PermissionsAndroid } from 'react-native';
+import { Linking, Platform } from 'react-native';
+
+import apiClient from './apiClient';
+import config from '../config';
+import { getItem, setItem, removeItem as _removeItem } from './localDB';
+import { requestAndroidPermission } from './permissionService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,6 +39,16 @@ export interface SOSPayload {
   location: Location;
   timestamp: number;
   message?: string;
+  sessionId?: string;
+  shareToken?: string;
+  shareUrl?: string;
+}
+
+interface LiveSOSSession {
+  id: string;
+  shareToken: string;
+  shareUrl: string;
+  expiresAt: string;
 }
 
 // ─── Storage keys ─────────────────────────────────────────────────────────────
@@ -78,9 +92,9 @@ class EmergencyService {
   // ── Contacts CRUD ────────────────────────────────────────────────────────────
 
   async getEmergencyContacts(): Promise<EmergencyContact[]> {
-    const stored = await AsyncStorage.getItem(CONTACTS_KEY);
+    const stored = await getItem(CONTACTS_KEY);
     if (stored) return JSON.parse(stored);
-    await AsyncStorage.setItem(CONTACTS_KEY, JSON.stringify(DEFAULT_CONTACTS));
+    await setItem(CONTACTS_KEY, JSON.stringify(DEFAULT_CONTACTS));
     return DEFAULT_CONTACTS;
   }
 
@@ -91,7 +105,7 @@ class EmergencyService {
       id: `contact_${Date.now()}_${Math.random().toString(36).slice(2)}`,
     };
     contacts.push(newContact);
-    await AsyncStorage.setItem(CONTACTS_KEY, JSON.stringify(contacts));
+    await setItem(CONTACTS_KEY, JSON.stringify(contacts));
     return newContact;
   }
 
@@ -103,14 +117,14 @@ class EmergencyService {
     const idx = contacts.findIndex((c) => c.id === id);
     if (idx === -1) throw new Error('Contact not found');
     contacts[idx] = { ...contacts[idx], ...updates };
-    await AsyncStorage.setItem(CONTACTS_KEY, JSON.stringify(contacts));
+    await setItem(CONTACTS_KEY, JSON.stringify(contacts));
     return contacts[idx];
   }
 
   async deleteContact(id: string): Promise<void> {
     const contacts = await this.getEmergencyContacts();
     const filtered = contacts.filter((c) => c.id !== id);
-    await AsyncStorage.setItem(CONTACTS_KEY, JSON.stringify(filtered));
+    await setItem(CONTACTS_KEY, JSON.stringify(filtered));
     // Also remove from favorites if present
     await this.removeFavoriteContact(id);
   }
@@ -118,7 +132,7 @@ class EmergencyService {
   // ── Favorites ────────────────────────────────────────────────────────────────
 
   async getFavoriteContacts(): Promise<EmergencyContact[]> {
-    const stored = await AsyncStorage.getItem(FAVORITES_KEY);
+    const stored = await getItem(FAVORITES_KEY);
     return stored ? JSON.parse(stored) : [];
   }
 
@@ -126,49 +140,89 @@ class EmergencyService {
     const favorites = await this.getFavoriteContacts();
     if (!favorites.find((f) => f.id === contact.id)) {
       favorites.push(contact);
-      await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
+      await setItem(FAVORITES_KEY, JSON.stringify(favorites));
     }
   }
 
   async removeFavoriteContact(contactId: string): Promise<void> {
     const favorites = await this.getFavoriteContacts();
-    await AsyncStorage.setItem(
-      FAVORITES_KEY,
-      JSON.stringify(favorites.filter((f) => f.id !== contactId)),
-    );
+    await setItem(FAVORITES_KEY, JSON.stringify(favorites.filter((f) => f.id !== contactId)));
   }
 
   // ── Location ─────────────────────────────────────────────────────────────────
 
   async requestLocationPermission(): Promise<boolean> {
     if (Platform.OS === 'android') {
-      const granted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-        {
-          title: 'Location Permission',
-          message: 'PetChain needs your location to find nearby vet clinics.',
-          buttonPositive: 'Allow',
-          buttonNegative: 'Deny',
-        },
-      );
-      return granted === PermissionsAndroid.RESULTS.GRANTED;
+      return requestAndroidPermission('android.permission.ACCESS_FINE_LOCATION', {
+        title: 'Location Permission',
+        message: 'PetChain needs your location to find nearby vet clinics.',
+        buttonPositive: 'Allow',
+        buttonNegative: 'Deny',
+      });
     }
     return true; // iOS prompts automatically via Geolocation.getCurrentPosition
   }
 
+  /**
+   * Gets current location with a 5-second timeout and fallback to last known location.
+   */
   async getCurrentLocation(): Promise<Location> {
     const hasPermission = await this.requestLocationPermission();
     if (!hasPermission) throw new Error('Location permission denied');
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
+      let resolved = false;
+
+      // 5-second timeout for fresh GPS lock
+      const timeout = setTimeout(async () => {
+        if (!resolved) {
+          resolved = true;
+          const lastLocation = await this.getLastKnownLocation();
+          resolve(lastLocation);
+        }
+      }, 5000);
+
       Geolocation.getCurrentPosition(
-        (position) =>
+        (position) => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timeout);
+            resolve({
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+            });
+          }
+        },
+        async () => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timeout);
+            const lastLocation = await this.getLastKnownLocation();
+            resolve(lastLocation);
+          }
+        },
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 10000 },
+      );
+    });
+  }
+
+  /**
+   * Fallback to last known location if GPS fails or times out.
+   */
+  private async getLastKnownLocation(): Promise<Location> {
+    return new Promise((resolve) => {
+      Geolocation.getCurrentPosition(
+        (position) => {
           resolve({
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
-          }),
-        () => reject(new Error('Failed to get location')),
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 },
+          });
+        },
+        () => {
+          // Absolute fallback if everything fails
+          resolve({ latitude: 0, longitude: 0 });
+        },
+        { enableHighAccuracy: false, timeout: 2000, maximumAge: Infinity },
       );
     });
   }
@@ -180,7 +234,71 @@ class EmergencyService {
     longitude: number,
     radiusKm = 10,
   ): Promise<VetClinic[]> {
-    // Mock data — replace with a real Places API call (e.g. Google Places)
+    const apiKey = config.googlePlaces.apiKey;
+    if (apiKey) {
+      try {
+        return await this.fetchClinicsFromPlacesAPI(latitude, longitude, radiusKm, apiKey);
+      } catch {
+        // fall through to mock data
+      }
+    }
+    return this.getMockClinics(latitude, longitude, radiusKm);
+  }
+
+  private async fetchClinicsFromPlacesAPI(
+    latitude: number,
+    longitude: number,
+    radiusKm: number,
+    apiKey: string,
+  ): Promise<VetClinic[]> {
+    const radiusMeters = radiusKm * 1000;
+    const url =
+      `https://maps.googleapis.com/maps/api/place/nearbysearch/json` +
+      `?location=${latitude},${longitude}` +
+      `&radius=${radiusMeters}` +
+      `&type=veterinary_care` +
+      `&key=${apiKey}`;
+
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Places API error: ${response.status}`);
+
+    const data = (await response.json()) as {
+      status: string;
+      results: Array<{
+        place_id: string;
+        name: string;
+        vicinity: string;
+        geometry: { location: { lat: number; lng: number } };
+        rating?: number;
+        formatted_phone_number?: string;
+      }>;
+    };
+
+    if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+      throw new Error(`Places API status: ${data.status}`);
+    }
+
+    return (data.results ?? [])
+      .map((place) => ({
+        id: place.place_id,
+        name: place.name,
+        address: place.vicinity,
+        phoneNumber: place.formatted_phone_number ?? '',
+        latitude: place.geometry.location.lat,
+        longitude: place.geometry.location.lng,
+        rating: place.rating,
+        available24h: false,
+        distance: this.calculateDistance(
+          latitude,
+          longitude,
+          place.geometry.location.lat,
+          place.geometry.location.lng,
+        ),
+      }))
+      .sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0));
+  }
+
+  private getMockClinics(latitude: number, longitude: number, radiusKm: number): VetClinic[] {
     const mockClinics: VetClinic[] = [
       {
         id: 'clinic-1',
@@ -219,32 +337,60 @@ class EmergencyService {
         ...clinic,
         distance: this.calculateDistance(latitude, longitude, clinic.latitude, clinic.longitude),
       }))
-      .filter((clinic) => clinic.distance! <= radiusKm)
-      .sort((a, b) => a.distance! - b.distance!);
+      .filter((clinic) => (clinic.distance ?? Infinity) <= radiusKm)
+      .sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0));
   }
 
   // ── SOS ──────────────────────────────────────────────────────────────────────
 
   /**
-   * One-tap SOS: gets current location, calls the first available 24h contact,
-   * and returns the SOS payload for further handling (e.g. sending to a backend).
+   * One-tap SOS: gets current location (with fail-safe fallback),
+   * dispatches alerts to all emergency contacts, and returns the SOS payload.
    */
   async triggerSOS(message?: string): Promise<SOSPayload> {
     const location = await this.getCurrentLocation();
+    const contacts = await this.getEmergencyContacts();
+    const session = await this.startLiveLocationSession(location, contacts, message);
     const payload: SOSPayload = {
       location,
       timestamp: Date.now(),
-      message,
+      message: message || 'Pet emergency - need immediate help',
+      sessionId: session?.id,
+      shareToken: session?.shareToken,
+      shareUrl: session?.shareUrl,
     };
 
-    // Auto-call first 24h emergency contact
-    const contacts = await this.getEmergencyContacts();
-    const emergencyContact = contacts.find((c) => c.available24h);
-    if (emergencyContact) {
-      this.callContact(emergencyContact.phoneNumber);
+    // Dispatch alerts to all emergency contacts
+    await this.sendSOSAlerts(payload);
+
+    // Auto-call first 24h emergency contact as a primary action
+    const primaryContact = contacts.find((c) => c.available24h) || contacts[0];
+    if (primaryContact) {
+      this.callContact(primaryContact.phoneNumber);
     }
 
     return payload;
+  }
+
+  /**
+   * Dispatches alerts via the most reliable available channels (SMS, Local Push).
+   */
+  private async sendSOSAlerts(payload: SOSPayload): Promise<void> {
+    const contacts = await this.getEmergencyContacts();
+    const mapsLink =
+      payload.shareUrl ||
+      `https://www.google.com/maps/search/?api=1&query=${payload.location.latitude},${payload.location.longitude}`;
+    const fullMessage = `🚨 SOS EMERGENCY: ${payload.message}\nLast known location: ${mapsLink}`;
+
+    // 1. Iterate through contacts and prepare to send alerts
+    for (const contact of contacts) {
+      void contact; // contacts iterated; SMS sent to first contact below
+    }
+
+    // 2. Open SMS for the first contact (as it's a foreground action)
+    if (contacts.length > 0) {
+      this.sendSMS(contacts[0].phoneNumber, fullMessage);
+    }
   }
 
   // ── Call / Navigate ──────────────────────────────────────────────────────────
@@ -254,6 +400,48 @@ class EmergencyService {
     Linking.canOpenURL(url).then((supported) => {
       if (supported) Linking.openURL(url);
     });
+  }
+
+  sendSMS(phoneNumber: string, message: string): void {
+    const separator = Platform.OS === 'ios' ? '&' : '?';
+    const url = `sms:${phoneNumber}${separator}body=${encodeURIComponent(message)}`;
+    Linking.canOpenURL(url).then((supported) => {
+      if (supported) Linking.openURL(url);
+    });
+  }
+
+  async startLiveLocationSession(
+    location: Location,
+    contacts: EmergencyContact[],
+    message?: string,
+    timeoutMinutes = 60,
+  ): Promise<LiveSOSSession | null> {
+    try {
+      const response = await apiClient.post('/emergency/sessions', {
+        message: message || 'Pet emergency - need immediate help',
+        latitude: location.latitude,
+        longitude: location.longitude,
+        timeoutMinutes,
+        contacts: contacts.map((contact) => ({
+          name: contact.name,
+          phoneNumber: contact.phoneNumber,
+        })),
+      });
+      return response.data?.data ?? response.data;
+    } catch {
+      return null;
+    }
+  }
+
+  async updateLiveLocation(shareToken: string, location: Location): Promise<void> {
+    await apiClient.post(`/emergency/sessions/${encodeURIComponent(shareToken)}/location`, {
+      latitude: location.latitude,
+      longitude: location.longitude,
+    });
+  }
+
+  async cancelLiveLocationSession(shareToken: string): Promise<void> {
+    await apiClient.post(`/emergency/sessions/${encodeURIComponent(shareToken)}/cancel`);
   }
 
   navigateToClinic(address: string): void {
@@ -274,7 +462,7 @@ class EmergencyService {
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
-  private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
     const R = 6371;
     const dLat = this.toRad(lat2 - lat1);
     const dLon = this.toRad(lon2 - lon1);

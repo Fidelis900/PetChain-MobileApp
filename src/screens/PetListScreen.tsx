@@ -1,17 +1,22 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
-  Image,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
 
+import { HeaderOfflineStatus, useOfflineStatus } from '../components/OfflineIndicator';
+import { OptimizedImage } from '../components/OptimizedImage';
+import PetAggregateView from '../components/PetAggregateView';
+import PetSelectorBar from '../components/PetSelectorBar';
+import { RetryError } from '../components/RetryError';
+import SOSButton from '../components/SOSButton';
+import { usePetContext } from '../context/PetContext';
 import petService, { type Pet } from '../services/petService';
-import { getPhoto } from '../utils/petPhotoStore';
+import { useRetry } from '../utils/useRetry';
 
 interface Props {
   onSelectPet: (pet: Pet) => void;
@@ -20,80 +25,141 @@ interface Props {
 
 const PetListScreen: React.FC<Props> = ({ onSelectPet, onAddPet }) => {
   const [pets, setPets] = useState<Pet[]>([]);
-  const [photos, setPhotos] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(false);
+  const offlineStatus = useOfflineStatus();
+  const { refreshPets } = usePetContext();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await petService.getAllPets();
-      setPets(data);
-      const photoMap: Record<string, string> = {};
-      await Promise.all(
-        data.map(async (p) => {
-          const uri = await getPhoto(p.id);
-          if (uri) photoMap[p.id] = uri;
-        }),
-      );
-      setPhotos(photoMap);
-    } catch {
-      Alert.alert('Error', 'Failed to load pets.');
-    } finally {
-      setLoading(false);
-    }
+  const loadPets = useCallback(async () => {
+    const data = await petService.getAllPets();
+    setPets(data);
+    return data;
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const [retryState, execute, reset] = useRetry(loadPets, {
+    maxRetries: 3,
+    autoRetry: false,
+  });
 
-  const renderItem = ({ item }: { item: Pet }) => (
-    <TouchableOpacity style={styles.card} onPress={() => onSelectPet(item)}>
-      {photos[item.id] ? (
-        <Image source={{ uri: photos[item.id] }} style={styles.avatar} />
-      ) : (
-        <View style={[styles.avatar, styles.avatarPlaceholder]}>
-          <Text style={styles.avatarEmoji}>🐾</Text>
-        </View>
-      )}
-      <View style={styles.cardInfo}>
-        <Text style={styles.petName}>{item.name}</Text>
-        <Text style={styles.petMeta}>
-          {item.species}
-          {item.breed ? ` · ${item.breed}` : ''}
-        </Text>
-        {item.dateOfBirth && (
-          <Text style={styles.petMeta}>
-            Born: {new Date(item.dateOfBirth).toLocaleDateString()}
-          </Text>
+  useEffect(() => {
+    void execute();
+  }, [execute]);
+
+  // card: padding 12 top + 12 bottom + avatar 56 + marginBottom 10 = 90
+  const ITEM_HEIGHT = 90;
+  const getItemLayout = useCallback(
+    (_: ArrayLike<Pet> | null | undefined, index: number) => ({
+      length: ITEM_HEIGHT,
+      offset: ITEM_HEIGHT * index,
+      index,
+    }),
+    [],
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: Pet }) => (
+      <TouchableOpacity
+        style={styles.card}
+        onPress={() => onSelectPet(item)}
+        accessibilityRole="button"
+        accessibilityLabel={`${item.name}, ${item.species}`}
+        accessibilityHint="Opens pet details"
+      >
+        {item.photoUrl || item.thumbnailUrl ? (
+          <OptimizedImage
+            uri={item.thumbnailUrl || item.photoUrl || ''}
+            style={styles.avatar}
+            accessibilityLabel={`${item.name} photo`}
+          />
+        ) : (
+          <View style={[styles.avatar, styles.avatarPlaceholder]}>
+            <Text style={styles.avatarEmoji}>🐾</Text>
+          </View>
         )}
-      </View>
-      <Text style={styles.chevron}>›</Text>
-    </TouchableOpacity>
+        <View style={styles.cardInfo}>
+          <Text style={styles.petName}>{item.name}</Text>
+          <Text style={styles.petMeta}>
+            {item.species}
+            {item.breed ? ` · ${item.breed}` : ''}
+          </Text>
+          {item.dateOfBirth && (
+            <Text style={styles.petMeta}>
+              Born: {new Date(item.dateOfBirth).toLocaleDateString()}
+            </Text>
+          )}
+          {!offlineStatus?.isOnline ? <Text style={styles.cachedChip}>Cached</Text> : null}
+        </View>
+        <Text style={styles.chevron}>›</Text>
+      </TouchableOpacity>
+    ),
+    [onSelectPet, offlineStatus?.isOnline],
   );
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>My Pets</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={onAddPet}>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>My Pets</Text>
+          <HeaderOfflineStatus />
+        </View>
+        <TouchableOpacity
+          style={styles.addBtn}
+          onPress={onAddPet}
+          accessibilityRole="button"
+          accessibilityLabel="Add pet"
+          accessibilityHint="Adds a new pet"
+        >
           <Text style={styles.addBtnText}>+ Add</Text>
         </TouchableOpacity>
       </View>
 
-      {loading ? (
+      {/* Pet selector bar — Issue #151/#82 */}
+      <PetSelectorBar onAddPet={onAddPet} />
+
+      {!offlineStatus?.isOnline ? (
+        <View style={styles.cachedBanner}>
+          <Text style={styles.cachedBannerText}>Showing cached pets while offline.</Text>
+        </View>
+      ) : null}
+
+      {/* Aggregate view — Issue #151/#82 */}
+      <PetAggregateView onSelectPet={onSelectPet} />
+
+      {retryState.error ? (
+        <RetryError
+          error={retryState.error}
+          onRetry={() => {
+            reset();
+            void execute();
+          }}
+          retryCount={retryState.retryCount}
+          maxRetries={3}
+        />
+      ) : retryState.loading ? (
         <ActivityIndicator style={styles.loader} size="large" color="#4CAF50" />
       ) : (
         <FlatList
           data={pets}
           keyExtractor={(p) => p.id}
           renderItem={renderItem}
+          getItemLayout={getItemLayout}
           contentContainerStyle={styles.list}
-          ListEmptyComponent={<Text style={styles.empty}>No pets yet. Add one!</Text>}
-          onRefresh={load}
-          refreshing={loading}
+          ListEmptyComponent={
+            <Text style={styles.empty} accessibilityLiveRegion="polite">
+              No pets yet. Add one!
+            </Text>
+          }
+          onRefresh={() => {
+            void execute();
+            void refreshPets();
+          }}
+          refreshing={retryState.loading}
+          removeClippedSubviews
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          initialNumToRender={10}
         />
       )}
+
+      <SOSButton style={styles.floatingSOS} />
     </View>
   );
 };
@@ -110,6 +176,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#e0e0e0',
   },
   title: { fontSize: 20, fontWeight: '700', color: '#1a1a1a' },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   addBtn: {
     backgroundColor: '#4CAF50',
     paddingHorizontal: 14,
@@ -119,6 +186,14 @@ const styles = StyleSheet.create({
   addBtnText: { color: '#fff', fontWeight: '600' },
   loader: { marginTop: 40 },
   list: { padding: 12 },
+  cachedBanner: {
+    backgroundColor: '#fff3e0',
+    borderBottomWidth: 1,
+    borderBottomColor: '#ffe0b2',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  cachedBannerText: { color: '#a54900', fontSize: 12, fontWeight: '600' },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -137,8 +212,29 @@ const styles = StyleSheet.create({
   cardInfo: { flex: 1 },
   petName: { fontSize: 16, fontWeight: '700', color: '#1a1a1a' },
   petMeta: { fontSize: 13, color: '#666', marginTop: 2 },
+  cachedChip: {
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#a54900',
+    backgroundColor: '#fff3e0',
+    borderColor: '#ed6c02',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
   chevron: { fontSize: 22, color: '#bbb' },
   empty: { textAlign: 'center', color: '#999', marginTop: 40, fontSize: 15 },
+  floatingSOS: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    margin: 0,
+    zIndex: 10,
+  },
 });
 
 export default PetListScreen;

@@ -1,0 +1,58 @@
+module.exports = {
+  testEnvironment: 'node',
+  testMatch: ['**/__tests__/**/*.test.ts', '**/__tests__/**/*.test.tsx'],
+  transform: {
+    '^.+\\.[jt]sx?$': 'babel-jest',
+  },
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
+  moduleNameMapper: {
+    '^react-native$': '<rootDir>/src/__mocks__/react-native.ts',
+    '^react-native-keychain$': '<rootDir>/src/__mocks__/react-native-keychain.ts',
+    '^react-native-image-picker$': '<rootDir>/src/__mocks__/react-native-image-picker.ts',
+    '^react-native-image-resizer$': '<rootDir>/src/__mocks__/react-native-image-resizer.ts',
+    '^@react-native-community/netinfo$': '<rootDir>/src/__mocks__/@react-native-community/netinfo.ts',
+    '^expo-constants$': '<rootDir>/src/__mocks__/expo-constants.ts',
+    '^expo-sqlite$': '<rootDir>/src/__mocks__/expo-sqlite.ts',
+    '^expo-notifications$': '<rootDir>/src/__mocks__/expo-notifications.ts',
+    '^expo-secure-store$': '<rootDir>/src/__mocks__/expo-secure-store.ts',
+  },
+  collectCoverageFrom: [
+    'src/**/*.ts',
+    'src/**/*.tsx',
+    'backend/**/*.ts',
+    '!src/**/__tests__/**',
+    '!src/**/__mocks__/**',
+    '!backend/**/__tests__/**',
+    '!**/node_modules/**',
+    '!**/dist/**',
+  ],
+  coverageThreshold: {
+    global: {
+      branches: 80,
+      functions: 80,
+      lines: 80,
+      statements: 80,
+    },
+    './backend/services/': {
+      branches: 85,
+      functions: 85,
+      lines: 85,
+      statements: 85,
+    },
+    './backend/server/routes/': {
+      branches: 80,
+      functions: 80,
+      lines: 80,
+      statements: 80,
+    },
+    './src/screens/': {
+      branches: 75,
+      functions: 75,
+      lines: 75,
+      statements: 75,
+    },
+  },
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+  testTimeout: 10000,
+  verbose: true,
+};

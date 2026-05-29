@@ -98,9 +98,9 @@ class NetworkMonitor {
 }
 
 export const networkMonitor = new NetworkMonitor();
+export const startNetworkMonitoring = () => networkMonitor.startNetworkMonitoring();
 
 // Convenience exports
-export const startNetworkMonitoring = () => networkMonitor.startNetworkMonitoring();
 export const stopNetworkMonitoring = () => networkMonitor.stopNetworkMonitoring();
 export const isOnline = () => networkMonitor.isOnline();
 export const getNetworkType = () => networkMonitor.getNetworkType();

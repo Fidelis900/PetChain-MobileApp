@@ -14,6 +14,7 @@ import {
 
 import { register } from '../services/authService';
 import type { AuthSession } from '../services/authService';
+import { isValidEmail, isValidPassword } from '../utils/validators';
 
 interface Props {
   onSuccess: (session: AuthSession) => void;
@@ -28,21 +29,42 @@ const RegisterScreen: React.FC<Props> = ({ onSuccess, onLogin }) => {
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
+    // 🔴 Required fields check
     if (!name.trim() || !email.trim() || !password) {
       Alert.alert('Validation', 'All fields are required.');
       return;
     }
+
+    // 🔴 Email validation
+    if (!isValidEmail(email)) {
+      Alert.alert('Validation', 'Please enter a valid email address.');
+      return;
+    }
+
+    // 🔴 Password strength validation
+    if (!isValidPassword(password)) {
+      Alert.alert(
+        'Validation',
+        'Password must be at least 8 characters and include uppercase, lowercase, and a number.',
+      );
+      return;
+    }
+
+    // 🔴 Confirm password
     if (password !== confirm) {
       Alert.alert('Validation', 'Passwords do not match.');
       return;
     }
-    if (password.length < 8) {
-      Alert.alert('Validation', 'Password must be at least 8 characters.');
-      return;
-    }
+
     setLoading(true);
+
     try {
-      const session = await register({ name: name.trim(), email: email.trim(), password });
+      const session = await register({
+        name: name.trim(),
+        email: email.trim(),
+        password,
+      });
+
       onSuccess(session);
     } catch (err: unknown) {
       Alert.alert('Registration Failed', err instanceof Error ? err.message : 'Please try again.');
@@ -68,6 +90,7 @@ const RegisterScreen: React.FC<Props> = ({ onSuccess, onLogin }) => {
           value={name}
           onChangeText={setName}
         />
+
         <TextInput
           style={styles.input}
           placeholder="Email"
@@ -77,14 +100,16 @@ const RegisterScreen: React.FC<Props> = ({ onSuccess, onLogin }) => {
           value={email}
           onChangeText={setEmail}
         />
+
         <TextInput
           style={styles.input}
-          placeholder="Password (min 8 characters)"
+          placeholder="Password (min 8 chars, A-Z, a-z, 0-9)"
           placeholderTextColor="#aaa"
           secureTextEntry
           value={password}
           onChangeText={setPassword}
         />
+
         <TextInput
           style={styles.input}
           placeholder="Confirm Password"
@@ -92,6 +117,7 @@ const RegisterScreen: React.FC<Props> = ({ onSuccess, onLogin }) => {
           secureTextEntry
           value={confirm}
           onChangeText={setConfirm}
+          onSubmitEditing={() => void handleRegister()}
         />
 
         <TouchableOpacity

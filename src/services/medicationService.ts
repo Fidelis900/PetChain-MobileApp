@@ -1,6 +1,12 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 
+import {
+  getAllMedications,
+  upsertMedication,
+  deleteMedicationById,
+  getDoseLogs as dbGetDoseLogs,
+  addDoseLog as dbAddDoseLog,
+} from './localDB';
 import type { Medication } from '../models/Medication';
 
 export type { Medication };
@@ -10,39 +16,86 @@ export interface DoseLog {
   medicationId: string;
   takenAt: string; // ISO string
   skipped?: boolean;
+  scheduledFor?: string;
   notes?: string;
 }
 
-const MEDICATIONS_KEY = '@medications';
-const DOSE_LOGS_KEY = '@dose_logs';
+export interface MedicationAdherence {
+  scheduled: number;
+  taken: number;
+  skipped: number;
+  missed: number;
+  score: number;
+}
 
 export async function getMedications(): Promise<Medication[]> {
-  const raw = await AsyncStorage.getItem(MEDICATIONS_KEY);
-  return raw ? JSON.parse(raw) : [];
+  return getAllMedications<Medication>();
 }
 
 export async function saveMedication(med: Medication): Promise<void> {
-  const meds = await getMedications();
-  const idx = meds.findIndex((m) => m.id === med.id);
-  if (idx >= 0) meds[idx] = med;
-  else meds.push(med);
-  await AsyncStorage.setItem(MEDICATIONS_KEY, JSON.stringify(meds));
+  await upsertMedication(med);
 }
 
 export async function deleteMedication(id: string): Promise<void> {
-  const meds = await getMedications();
-  await AsyncStorage.setItem(MEDICATIONS_KEY, JSON.stringify(meds.filter((m) => m.id !== id)));
+  await deleteMedicationById(id);
 }
 
 export async function getDoseLogs(): Promise<DoseLog[]> {
-  const raw = await AsyncStorage.getItem(DOSE_LOGS_KEY);
-  return raw ? JSON.parse(raw) : [];
+  return dbGetDoseLogs<DoseLog>();
 }
 
 export async function logDose(log: DoseLog): Promise<void> {
-  const logs = await getDoseLogs();
-  logs.push(log);
-  await AsyncStorage.setItem(DOSE_LOGS_KEY, JSON.stringify(logs));
+  await dbAddDoseLog(log);
+}
+
+export function getDoseStatus(
+  medicationId: string,
+  scheduledTime: Date,
+  logs: DoseLog[],
+): 'taken' | 'skipped' | 'missed' | 'pending' {
+  const windowMs = 30 * 60 * 1000;
+  const match = logs.find((log) => {
+    if (log.medicationId !== medicationId) return false;
+    if (log.scheduledFor)
+      return Math.abs(new Date(log.scheduledFor).getTime() - scheduledTime.getTime()) <= windowMs;
+    return Math.abs(new Date(log.takenAt).getTime() - scheduledTime.getTime()) <= windowMs;
+  });
+  if (match?.skipped) return 'skipped';
+  if (match) return 'taken';
+  return scheduledTime.getTime() + windowMs < Date.now() ? 'missed' : 'pending';
+}
+
+export function calculateAdherence(
+  medications: Medication[],
+  logs: DoseLog[],
+  fromDate: Date,
+  toDate: Date,
+): MedicationAdherence {
+  let scheduled = 0;
+  let taken = 0;
+  let skipped = 0;
+  let missed = 0;
+  medications.forEach((med) => {
+    getScheduleForRange(med, fromDate, toDate).forEach((doseTime) => {
+      scheduled += 1;
+      const status = getDoseStatus(med.id, doseTime, logs);
+      if (status === 'taken') taken += 1;
+      if (status === 'skipped') skipped += 1;
+      if (status === 'missed') missed += 1;
+    });
+  });
+  const denominator = Math.max(1, scheduled - skipped);
+  return { scheduled, taken, skipped, missed, score: Math.round((taken / denominator) * 100) };
+}
+
+export function getLowRefillMedications(medications: Medication[], threshold = 0.2): Medication[] {
+  return medications.filter(
+    (med) =>
+      med.remainingPills !== undefined &&
+      med.totalPills !== undefined &&
+      med.totalPills > 0 &&
+      med.remainingPills <= med.totalPills * threshold,
+  );
 }
 
 export function getMedicationEndDate(med: Medication): Date | null {
@@ -117,6 +170,6 @@ export async function scheduleRefillReminder(med: Medication): Promise<void> {
       body: `Time to refill ${med.name}`,
       data: { medicationId: med.id },
     },
-    trigger,
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: trigger },
   });
 }

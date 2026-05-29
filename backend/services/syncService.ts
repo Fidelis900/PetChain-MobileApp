@@ -129,6 +129,26 @@ class SyncService {
     });
   }
 
+  // ── Process offline queue (alias for sync, guards against double-run) ─────
+
+  async processQueue(apiClient: {
+    post: ApiClientLike['post'];
+    put: ApiClientLike['put'];
+    delete: ApiClientLike['delete'];
+    get: ApiClientLike['get'];
+  }): Promise<{ processed: number; failed: number }> {
+    const queue = await this.getQueue();
+    if (queue.length === 0) return { processed: 0, failed: 0 };
+
+    await this.sync(apiClient);
+
+    const remaining = await this.getQueue();
+    return {
+      processed: queue.length - remaining.length,
+      failed: remaining.length,
+    };
+  }
+
   // ── Pull from server ─────────────────────────────────────────────────────────
 
   async pull(
@@ -138,7 +158,7 @@ class SyncService {
     for (const type of types) {
       try {
         const response = await apiClient.get(`/${type}s`);
-        const serverItems = (response.data as Record<string, unknown>[]);
+        const serverItems = response.data as Record<string, unknown>[];
 
         for (const item of serverItems) {
           const key = `@${type}_${item.id}`;

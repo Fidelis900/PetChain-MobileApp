@@ -1,16 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import type { BarCodeScannerResult } from 'expo-barcode-scanner';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  SafeAreaView,
-  TouchableOpacity,
   Alert,
-  StatusBar,
-  Platform,
-  PermissionsAndroid,
   Linking,
+  Platform,
+  SafeAreaView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+
+import PermissionRationaleModal from '../components/PermissionRationaleModal';
+import { scanQRCode } from '../services/qrCodeService';
+import { useSecureScreen } from '../utils/secureScreen';
 
 interface QRScannerScreenProps {
   onScanSuccess: (data: string) => void;
@@ -18,122 +23,87 @@ interface QRScannerScreenProps {
   onManualEntry: () => void;
 }
 
-/** Shape of the bar-code read event from a camera library (e.g. react-native-camera). */
-interface BarCodeReadEvent {
-  data: string;
-  type: string;
-}
-
 const QRScannerScreen: React.FC<QRScannerScreenProps> = ({
   onScanSuccess,
   onClose,
   onManualEntry,
 }) => {
+  useSecureScreen();
+
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-  const [scanning, setScanning] = useState(false);
+  const [scanned, setScanned] = useState(false);
   const [torchEnabled, setTorchEnabled] = useState(false);
+  const [showRationale, setShowRationale] = useState(false);
+  const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastScanRef = useRef<number>(0);
 
-  useEffect(() => {
-    requestCameraPermission();
-    return () => {
-      // Cleanup scanner if needed
-    };
-  }, []);
+  const [_permission, requestPermission] = useCameraPermissions();
 
-  const requestCameraPermission = async () => {
+  const requestCameraPermission = useCallback(async () => {
     try {
-      if (Platform.OS === 'android') {
-        const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA, {
-          title: 'Camera Permission',
-          message: 'PetChain needs camera permission to scan QR codes',
-          buttonNeutral: 'Ask Me Later',
-          buttonNegative: 'Cancel',
-          buttonPositive: 'OK',
-        });
-        setHasPermission(granted === PermissionsAndroid.RESULTS.GRANTED);
-      } else {
-        // iOS permissions are handled differently
-        setHasPermission(true);
+      const result = await requestPermission();
+      const isGranted = result?.status === 'granted';
+      setHasPermission(isGranted);
+
+      if (!isGranted && Platform.OS === 'android') {
+        setShowRationale(true);
       }
     } catch (err) {
       console.warn('Camera permission error:', err);
       setHasPermission(false);
     }
-  };
+  }, [requestPermission]);
 
-  const _handleBarCodeRead = (event: any) => {
-    const { data } = event;
+  useEffect(() => {
+    void requestCameraPermission();
 
-    if (data && scanning) {
-      setScanning(false);
+    return () => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      const timeout = scanTimeoutRef.current;
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [requestCameraPermission]);
 
-      // Validate QR code data format
-      if (isValidPetChainQR(data)) {
-        onScanSuccess(data);
-      } else {
-        Alert.alert(
-          'Invalid QR Code',
-          'This QR code is not a valid PetChain record. Please scan a PetChain QR code.',
-          [
-            {
-              text: 'Try Again',
-              onPress: () => setScanning(true),
-            },
-            {
-              text: 'Manual Entry',
-              onPress: onManualEntry,
-            },
-            {
-              text: 'Cancel',
-              style: 'cancel',
-              onPress: onClose,
-            },
-          ],
-        );
-      }
+  const handleBarCodeScanned = ({ data }: BarCodeScannerResult) => {
+    // Debounce: prevent multiple scans within 500ms
+    const now = Date.now();
+    if (now - lastScanRef.current < 500) {
+      return;
     }
-  };
-  void _handleBarCodeRead; // suppress noUnusedLocals until camera library is wired up
+    lastScanRef.current = now;
 
-  const isValidPetChainQR = (data: string): boolean => {
-    try {
-      // Check if it's a PetChain QR code format
-      // Expected format: "petchain://record/{recordId}" or JSON with record data
-      if (data.startsWith('petchain://record/')) {
-        return true;
-      }
+    if (scanned || !data) return;
 
-      // Try to parse as JSON
-      const parsed = JSON.parse(data);
-      return parsed && (parsed.recordId || parsed.petId || parsed.vetId);
-    } catch {
-      return false;
+    setScanned(true);
+
+    // Validate QR code
+    const result = scanQRCode(data);
+
+    if (result.valid && result.petId) {
+      onScanSuccess(data);
+    } else {
+      Alert.alert(
+        'Invalid QR Code',
+        result.error || 'This QR code is not a valid PetChain record.',
+        [
+          { text: 'Try Again', onPress: () => setScanned(false) },
+          { text: 'Manual Entry', onPress: onManualEntry },
+          { text: 'Cancel', style: 'cancel', onPress: onClose },
+        ],
+      );
     }
   };
 
-  const toggleTorch = () => {
-    setTorchEnabled(!torchEnabled);
-    // In a real implementation, you would control the camera torch here
-  };
+  const toggleTorch = () => setTorchEnabled(!torchEnabled);
 
   const handlePermissionDenied = () => {
     Alert.alert(
       'Camera Permission Required',
-      'PetChain needs camera permission to scan QR codes. Please enable camera access in your device settings.',
+      'Please enable camera access in your device settings.',
       [
-        {
-          text: 'Open Settings',
-          onPress: () => Linking.openSettings(),
-        },
-        {
-          text: 'Manual Entry',
-          onPress: onManualEntry,
-        },
-        {
-          text: 'Cancel',
-          style: 'cancel',
-          onPress: onClose,
-        },
+        { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        { text: 'Manual Entry', onPress: onManualEntry },
+        { text: 'Cancel', style: 'cancel', onPress: onClose },
       ],
     );
   };
@@ -160,23 +130,50 @@ const QRScannerScreen: React.FC<QRScannerScreenProps> = ({
 
     return (
       <View style={styles.cameraContainer}>
-        {/* Camera view placeholder - in real implementation, use react-native-camera */}
-        <View style={styles.cameraPlaceholder}>
-          <View style={styles.scanFrame}>
-            <View style={[styles.scanCorner, styles.topLeft]} />
-            <View style={[styles.scanCorner, styles.topRight]} />
-            <View style={[styles.scanCorner, styles.bottomLeft]} />
-            <View style={[styles.scanCorner, styles.bottomRight]} />
+        <CameraView
+          style={styles.camera}
+          facing="back"
+          enableTorch={torchEnabled}
+          onBarcodeScanned={
+            scanned
+              ? undefined
+              : (result) => handleBarCodeScanned({ data: result.data } as BarCodeScannerResult)
+          }
+          barcodeScannerSettings={{
+            barcodeTypes: ['qr', 'datamatrix', 'pdf417'],
+          }}
+        >
+          <View style={styles.overlay}>
+            <View style={styles.scanFrame}>
+              <View style={[styles.scanCorner, styles.topLeft]} />
+              <View style={[styles.scanCorner, styles.topRight]} />
+              <View style={[styles.scanCorner, styles.bottomLeft]} />
+              <View style={[styles.scanCorner, styles.bottomRight]} />
+              {scanned && (
+                <View style={styles.scanningIndicator}>
+                  <Text style={styles.scanningText}>Processing...</Text>
+                </View>
+              )}
+            </View>
             <Text style={styles.scanText}>Align QR code within frame</Text>
           </View>
-        </View>
+        </CameraView>
 
         <View style={styles.controlsContainer}>
-          <TouchableOpacity style={styles.controlButton} onPress={toggleTorch}>
-            <Text style={styles.controlButtonText}>{torchEnabled ? '🔦' : '🔦'}</Text>
+          <TouchableOpacity
+            style={[styles.controlButton, torchEnabled && styles.controlButtonActive]}
+            onPress={toggleTorch}
+            accessibilityLabel="Toggle flashlight"
+            accessibilityRole="button"
+          >
+            <Text style={styles.controlButtonText}>💡</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity style={styles.controlButton} onPress={onManualEntry}>
+          <TouchableOpacity
+            style={styles.controlButton}
+            onPress={onManualEntry}
+            accessibilityLabel="Manual entry"
+            accessibilityRole="button"
+          >
             <Text style={styles.controlButtonText}>📝</Text>
           </TouchableOpacity>
         </View>
@@ -184,47 +181,52 @@ const QRScannerScreen: React.FC<QRScannerScreenProps> = ({
     );
   };
 
-  const renderHeader = () => {
-    return (
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#000000" />
+      <PermissionRationaleModal
+        visible={showRationale}
+        permissionType="camera"
+        showSettings={hasPermission === false}
+        onAllow={() => {
+          setShowRationale(false);
+          void requestCameraPermission();
+        }}
+        onDeny={() => {
+          setShowRationale(false);
+          setHasPermission(false);
+        }}
+      />
       <View style={styles.header}>
-        <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+        <TouchableOpacity
+          style={styles.closeButton}
+          onPress={onClose}
+          accessibilityLabel="Close scanner"
+          accessibilityRole="button"
+        >
           <Text style={styles.closeButtonText}>✕</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Scan QR Code</Text>
         <View style={styles.placeholder} />
       </View>
-    );
-  };
-
-  const renderFooter = () => {
-    return (
+      <View style={styles.scannerContainer}>{renderCameraView()}</View>
       <View style={styles.footer}>
         <Text style={styles.footerText}>Scan a PetChain QR code to access pet records</Text>
-        <TouchableOpacity style={styles.manualEntryButton} onPress={onManualEntry}>
+        <TouchableOpacity
+          style={styles.manualEntryButton}
+          onPress={onManualEntry}
+          accessibilityLabel="Enter code manually"
+          accessibilityRole="button"
+        >
           <Text style={styles.manualEntryButtonText}>Manual Entry</Text>
         </TouchableOpacity>
       </View>
-    );
-  };
-
-  return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#000000" />
-
-      {renderHeader()}
-
-      <View style={styles.scannerContainer}>{renderCameraView()}</View>
-
-      {renderFooter()}
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000000',
-  },
+  container: { flex: 1, backgroundColor: '#000000' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -237,106 +239,112 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  closeButtonText: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  headerTitle: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  placeholder: {
-    width: 40,
-  },
-  scannerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  closeButtonText: { color: '#ffffff', fontSize: 18, fontWeight: 'bold' },
+  headerTitle: { color: '#ffffff', fontSize: 18, fontWeight: '600' },
+  placeholder: { width: 40 },
+  scannerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   cameraContainer: {
     flex: 1,
     width: '100%',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  cameraPlaceholder: {
+  camera: {
     flex: 1,
     width: '100%',
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#111827',
   },
   scanFrame: {
-    width: 250,
-    height: 250,
+    width: 280,
+    height: 280,
     borderWidth: 2,
     borderColor: '#10B981',
-    borderRadius: 12,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
+    backgroundColor: 'rgba(0,0,0,0.3)',
   },
   scanCorner: {
     position: 'absolute',
-    width: 20,
-    height: 20,
+    width: 24,
+    height: 24,
     borderColor: '#10B981',
   },
-  topLeft: {
-    top: -2,
-    left: -2,
-    borderTopWidth: 4,
-    borderLeftWidth: 4,
-  },
+  topLeft: { top: -2, left: -2, borderTopWidth: 5, borderLeftWidth: 5, borderTopLeftRadius: 16 },
   topRight: {
     top: -2,
     right: -2,
-    borderTopWidth: 4,
-    borderRightWidth: 4,
+    borderTopWidth: 5,
+    borderRightWidth: 5,
+    borderTopRightRadius: 16,
   },
   bottomLeft: {
     bottom: -2,
     left: -2,
-    borderBottomWidth: 4,
-    borderLeftWidth: 4,
+    borderBottomWidth: 5,
+    borderLeftWidth: 5,
+    borderBottomLeftRadius: 16,
   },
   bottomRight: {
     bottom: -2,
     right: -2,
-    borderBottomWidth: 4,
-    borderRightWidth: 4,
+    borderBottomWidth: 5,
+    borderRightWidth: 5,
+    borderBottomRightRadius: 16,
+  },
+  scanningIndicator: {
+    backgroundColor: 'rgba(16, 185, 129, 0.9)',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  scanningText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   scanText: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 16,
     textAlign: 'center',
-    marginTop: 20,
+    marginTop: 30,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
   },
   controlsContainer: {
     position: 'absolute',
-    bottom: 100,
+    bottom: 120,
     flexDirection: 'row',
     justifyContent: 'space-around',
-    width: '100%',
-    paddingHorizontal: 40,
+    width: '60%',
   },
   controlButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
   },
-  controlButtonText: {
-    fontSize: 24,
+  controlButtonActive: {
+    backgroundColor: 'rgba(16, 185, 129, 0.3)',
+    borderColor: '#10B981',
   },
+  controlButtonText: { fontSize: 28 },
   permissionContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -355,16 +363,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
   },
-  permissionButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  footer: {
-    backgroundColor: '#1F2937',
-    padding: 20,
-    alignItems: 'center',
-  },
+  permissionButtonText: { color: '#ffffff', fontSize: 16, fontWeight: '600' },
+  footer: { backgroundColor: '#1F2937', padding: 20, alignItems: 'center' },
   footerText: {
     color: '#9CA3AF',
     fontSize: 14,
@@ -377,11 +377,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
   },
-  manualEntryButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  manualEntryButtonText: { color: '#ffffff', fontSize: 16, fontWeight: '600' },
 });
 
 export default QRScannerScreen;

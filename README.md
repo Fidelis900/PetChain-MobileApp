@@ -1,63 +1,226 @@
-# PetMedTracka-MobileApp
-Mobile App contributions are here
+# PetChain Mobile App
 
-The PetCare Mobile App is a companion application for pet owners, designed to provide easy access to their pets' medical records, medication schedules, and vet appointments. By scanning a QR code or logging into their account, pet owners can view and manage their pets' health information on the go.
+> Secure pet health records, medication reminders, QR scanning, and emergency SOS — powered by blockchain.
 
-This app integrates seamlessly with the PetChain Web Platform (for vet hospitals) and PetChain Smart Contracts (for secure, decentralized data storage).
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue)](https://github.com/DogStark/PetChain-MobileApp/releases)
 
+**PetChain** is a comprehensive mobile application for pet owners to securely manage their pets' medical records, medication schedules, vet appointments, and emergency contacts. Built with React Native and Expo, it integrates with the Stellar blockchain to provide immutable, verifiable health records.
 
-Features
-QR Code Scanning: Scan your pet's QR code to instantly access their medical records.
+---
 
-Pet Profile Management: View and update your pet's information (e.g., name, breed, age, medical history).
+## 📱 App Store & Google Play Submission
 
-Medication Tracking: Keep track of medication schedules and receive reminders.
+This repository contains everything needed for app store submission under the `storelisting/` directory and `legal/` folder.
 
-Appointment Management: View upcoming vet appointments and schedule new ones.
+**Preparation Status:** Ready for submission pending screenshot and icon generation.
 
-Emergency Contacts: Access emergency vet contacts and nearby clinics.
+**Submission assets checklist:** See [storelisting/README.md](storelisting/README.md)
 
-Offline Mode: Access basic pet information even without an internet connection.
+Generated assets should be placed in:
+- `assets/` — App icons (1024×1024) and splash screen (1284×2778)
+- `storelisting/screenshots/ios/` — iOS App Store screenshots
+- `storelisting/screenshots/android/` — Google Play screenshots
 
-Secure Authentication: Protect your data with secure login and encryption.
+Legal documents:
+- `legal/PrivacyPolicy.md` — Upload to https://petchain.app/privacy
+- `legal/TermsOfService.md` — Upload to https://petchain.app/terms
 
-Prerequisites
+Metadata for store listings:
+- `storelisting/ios-subtitle.txt`
+- `storelisting/ios-description.txt`
+- `storelisting/ios-keywords.txt`
+- `storelisting/android-short-description.txt`
+- `storelisting/android-full-description.txt`
+- `storelisting/android-keywords.txt`
+- `storelisting/release-notes-v1.0.0.txt`
 
-Before running the app, ensure you have the following installed:
+Screenshot capture guide:
+- `storelisting/screenshots/CAPTURE-GUIDE.md`
 
-Node.js (v16 or higher)
+---
 
-React Native CLI or Expo CLI (for development)
+## ✨ Features
 
-Android Studio or Xcode (for emulators)
+- **🔒 Blockchain-Verified Records:** Immutable medical history on Stellar
+- **📱 QR Code Scanner:** Instant pet identification and record sharing
+- **💊 Medication Reminders:** Smart notifications for doses and refills
+- **📅 Appointment Management:** Vet visit scheduling with reminders
+- **🚨 Emergency SOS:** One-tap alert to emergency contacts with location
+- **📊 Health Dashboard:** Visual health scoring and trend tracking
+- **👥 Multi-Pet Support:** Manage unlimited pets (Premium) or 1 (Free)
+- **🌐 Offline-First:** Full functionality without internet
+- **🔐 Privacy-First:** AES-256 encryption, biometric login, GDPR compliant
+- **🌍 Multi-Language:** English and Spanish, more coming soon
 
-Tech Stack
-Framework: React Native
+---
 
-Navigation: React Navigation
+## 🛠 Tech Stack
 
-State Management: Redux Toolkit or Context API
+| Layer | Technology |
+|--------|-----------|
+| **Framework** | React Native (Expo SDK) |
+| **Language** | TypeScript |
+| **Navigation** | React Navigation v6 |
+| **Backend** | Node.js, Express, PostgreSQL |
+| **Blockchain** | Stellar SDK (medical record hashes) |
+| **Database** | SQLite (local), PostgreSQL (cloud) |
+| **Storage** | Encrypted AsyncStorage + Cloud Sync |
+| **Auth** | JWT, OAuth (Google/Apple/Facebook) |
+| **Push** | Expo Notifications (APNs & FCM) |
+| **Error Tracking** | Sentry |
+| **Testing** | Jest, Vitest, React Native Testing Library |
 
-API Integration: Axios or Fetch
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed system diagrams.
 
-QR Code Scanning: react-native-camera or expo-camera
+---
 
-Authentication: Firebase Authentication, JWT, or OAuth
+## 🚀 Getting Started
 
-Offline Storage: AsyncStorage or SQLite
+### Prerequisites
+- Node.js ≥ 18
+- npm or yarn
+- Expo CLI (`npm install -g expo-cli`)
+- iOS Simulator or Android Emulator (optional, for local testing)
 
-Styling: Styled Components or React Native Paper
+### Installation
+```bash
+# Clone repository
+git clone https://github.com/DogStark/PetChain-MobileApp.git
+cd PetChain-MobileApp
 
-Testing: Jest and React Native Testing Library
+# Install dependencies
+npm install
 
-Architecture
-For a detailed visual overview of the system architecture, data flow, and component relationships, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+# Copy environment variables
+cp .env.example .env.development
+# Edit .env.development with your API endpoint
 
-Contributing
-We welcome contributions from the community! If you'd like to contribute, please follow these steps:
+# Start development server
+npm start
+```
 
-- Fork the repository.
-- Create a new branch for your feature or bugfix
-- Commit your changes
-- Push to your branch
-- Open a pull request and describe your changes.
+### Running on Device
+```bash
+# iOS Simulator
+npm run ios
+
+# Android Emulator
+npm run android
+
+# Or scan QR code with Expo Go app on your phone
+npm start
+```
+
+See [CONTRIBUTING.md](./docs/CONTRIBUTING.md) for development workflow.
+
+---
+
+## 🌱 Database Seeding
+
+### Quick Setup
+
+```bash
+# 1. Ensure database is running
+# 2. Run migrations
+npm run migrate
+
+# 3. Seed data
+npm run seed:dev
+
+# 4. Verify
+npm test -- backend/seeds/__tests__/seedData.test.ts
+```
+
+### One-Liner Commands
+
+```bash
+# Default seed
+npm run seed
+
+# Development preset
+npm run seed:dev
+
+# Testing preset (minimal data)
+npm run seed:test
+
+# Large dataset
+npm run seed:large
+
+# Custom configuration
+ts-node backend/seeds/index.ts --owners 10 --vets 5 --pets 3 --records 4 --appointments 3 --medications 2
+```
+
+### Configuration Flags
+
+| Flag | Default | Example |
+|------|---------|---------|
+| `--owners` | 5 | `--owners 10` |
+| `--vets` | 3 | `--vets 5` |
+| `--pets` | 2 | `--pets 3` |
+| `--records` | 3 | `--records 5` |
+| `--appointments` | 2 | `--appointments 4` |
+| `--medications` | 1 | `--medications 2` |
+
+### Data Generated
+
+```
+Users:        5 owners + 3 vets = 8 total
+Pets:         5 owners × 2 pets = 10 total
+Records:      10 pets × 3 records = 30 total
+Appointments: 10 pets × 2 appointments = 20 total
+Medications:  10 pets × 1 medication = 10 total
+```
+
+---
+
+## 🧪 Testing
+```bash
+# Unit tests
+npm test
+
+# Lint & typecheck
+npm run lint
+npm run typecheck
+
+# CI pipeline (runs on every PR)
+# GitHub Actions workflows are in .github/workflows/
+```
+
+---
+
+## 📄 Legal
+
+- [Privacy Policy](https://petchain.app/privacy) — How we handle your data
+- [Terms of Service](https://petchain.app/terms) — Usage agreement
+
+PetChain is not a substitute for professional veterinary care. Always consult a licensed veterinarian for medical advice.
+
+---
+
+## 📞 Support
+
+- Issues: https://github.com/DogStark/PetChain-MobileApp/issues
+- Email: support@petchain.app
+- Twitter: [@petchainapp](https://twitter.com/petchainapp)
+- Website: https://petchain.app
+
+---
+
+## 📢 License
+
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🙏 Acknowledgements
+
+- Built with ❤️ for pet lovers everywhere
+- Powered by [Stellar](https://stellar.org) blockchain
+- UI/UX inspired by modern health & fitness apps
+- Thanks to all contributors and beta testers
+
+---
+
+**Status:** Version 1.0.0 — Ready for App Store & Google Play submission.
+

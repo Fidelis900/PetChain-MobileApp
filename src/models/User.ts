@@ -15,13 +15,29 @@ export interface EmergencyContact {
   email?: string;
 }
 
+export interface PetNotificationOverride {
+  petId: string;
+  medicationReminders?: boolean;
+  appointmentReminders?: boolean;
+  vaccinationAlerts?: boolean;
+}
+
 export interface NotificationPreferences {
+  // By type
   medicationReminders?: boolean;
   appointmentReminders?: boolean;
   vaccinationAlerts?: boolean;
   reminderLeadTimeMinutes?: number;
+  // Sound / vibration
   soundEnabled?: boolean;
+  vibrationEnabled?: boolean;
   badgeEnabled?: boolean;
+  // Quiet hours
+  quietHoursEnabled?: boolean;
+  quietHoursStart?: string; // "HH:MM" 24-hour
+  quietHoursEnd?: string; // "HH:MM" 24-hour
+  // Per-pet overrides
+  petOverrides?: PetNotificationOverride[];
 }
 
 export interface User {
@@ -37,6 +53,23 @@ export interface User {
   createdAt?: string;
   updatedAt?: string;
 }
+
+/**
+ * Factory to safely create a User object from raw data.
+ */
+export const createUser = (data: Partial<User>): User => ({
+  id: data.id || '',
+  email: data.email || '',
+  name: data.name || 'User',
+  phone: data.phone,
+  role: data.role || 'owner',
+  profilePhoto: data.profilePhoto,
+  address: data.address,
+  emergencyContact: data.emergencyContact,
+  notificationPreferences: data.notificationPreferences,
+  createdAt: data.createdAt,
+  updatedAt: data.updatedAt,
+});
 
 export interface CreateUserInput extends Omit<User, 'id' | 'createdAt' | 'updatedAt'> {
   password?: string;
