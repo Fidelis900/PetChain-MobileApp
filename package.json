@@ -122,13 +122,16 @@
     "helmet": "^8.0.0",
     "i18next": "^26.0.8",
     "jsonwebtoken": "^9.0.3",
+    "pdf-parse": "^1.1.1",
     "react-i18next": "^17.0.6",
     "react-native-image-picker": "^7.0.0",
     "react-native-image-resizer": "^1.4.5",
     "react-native-keychain": "^10.0.0",
     "react-native-ssl-pinning": "^1.5.3",
     "react-native-webrtc": "^124.0.3",
-    "swagger-ui-express": "^5.0.1"
+    "helmet": "^8.0.0",
+    "swagger-ui-express": "^5.0.1",
+    "tesseract.js": "^5.0.4"
   },
   "devDependencies": {
     "@babel/preset-env": "^7.29.7",
