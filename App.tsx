@@ -1,12 +1,12 @@
 import * as Sentry from '@sentry/react-native';
 import React, { useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, I18nManager } from 'react-native';
 
-import './src/i18n';
 import OfflineIndicator from './src/components/OfflineIndicator';
 import { useSplashGuard } from './src/components/SplashGuard';
 import UpdatePrompt from './src/components/UpdatePrompt';
 import { PetProvider } from './src/context/PetContext';
+import i18n, { isRTL } from './src/i18n';
 import AppNavigator from './src/navigation/AppNavigator';
 import crashReporting from './src/services/crashReporting';
 import {
@@ -17,6 +17,12 @@ import updateService from './src/services/updateService';
 
 // Initialise Sentry before the first render
 crashReporting.init();
+
+// Apply RTL direction based on the active language at startup
+const startupRTL = isRTL(i18n.language);
+if (I18nManager.isRTL !== startupRTL) {
+  I18nManager.forceRTL(startupRTL);
+}
 
 function App() {
   const { appReady } = useSplashGuard();
