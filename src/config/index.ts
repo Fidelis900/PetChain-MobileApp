@@ -30,6 +30,11 @@ const config = {
     version: '1.0',
   },
 
+  app: {
+    name: env('APP_NAME', 'PetChain'),
+    version: (Constants.expoConfig?.version as string | undefined) ?? env('APP_VERSION', '1.0.0'),
+  },
+
   cache: {
     maxSizeMb: Number(env('MAX_CACHE_SIZE', '50')),
     ttlMs: 2 * 60 * 1000,
@@ -39,6 +44,16 @@ const config = {
     defaultLimit: Number(env('PAGINATION_LIMIT', '20')),
     maxLimit: 100,
   },
+
+  monitoring: {
+    /** Enable session monitoring (disabled in development by default) */
+    enabled: env('MONITORING_ENABLED', APP_ENV === 'development' ? 'false' : 'true') === 'true',
+    /** Sentry-compatible sample rate: 1.0 = 100% of sessions tracked */
+    sampleRate: Number(env('MONITORING_SAMPLE_RATE', '1.0')),
+    /** Session idle timeout in ms — sessions inactive longer than this are auto-ended */
+    sessionTimeoutMs: Number(env('SESSION_TIMEOUT_MS', String(30 * 60 * 1000))),
+    /** Crash-free rate threshold — alert fires when rate drops below this */
+    crashFreeThreshold: Number(env('CRASH_FREE_THRESHOLD', '99.5')),
   sentry: {
     dsn: env('SENTRY_DSN', ''),
     enableInDev: env('SENTRY_ENABLE_IN_DEV', 'false') === 'true',
