@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert,
+  ActivityIndicator,
   FlatList,
   Modal,
   ScrollView,
@@ -9,6 +9,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Alert,
 } from 'react-native';
 import { v4 as uuid } from 'uuid';
 
@@ -16,12 +17,16 @@ import {
   AppointmentStatus,
   type Appointment,
   cancelAppointmentReminder,
+  detectConflicts,
   getAppointments,
   getPast,
   getUpcoming,
   saveAppointment,
   scheduleAppointmentReminder,
+  type ConflictDetectionResult,
 } from '../services/appointmentService';
+import { getMedications } from '../services/medicationService';
+import type { Medication } from '../models/Medication';
 import { formatLocalDate, formatLocalTime } from '../utils/dateLocale';
 import { useSecureScreen } from '../utils/secureScreen';
 
@@ -46,14 +51,23 @@ const AppointmentScreen: React.FC = () => {
 
   const [tab, setTab] = useState<Tab>('upcoming');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [medications, setMedications] = useState<Medication[]>([]);
   const [bookingVisible, setBookingVisible] = useState(false);
   const [detailAppt, setDetailAppt] = useState<Appointment | null>(null);
   const [rescheduleVisible, setRescheduleVisible] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [rescheduleDate, setRescheduleDate] = useState('');
 
+  // ── Conflict modal state ────────────────────────────────────────────────────
+  const [conflictResult, setConflictResult] = useState<ConflictDetectionResult | null>(null);
+  const [pendingAppointment, setPendingAppointment] = useState<Appointment | null>(null);
+  const [conflictModalVisible, setConflictModalVisible] = useState(false);
+  const [isCheckingConflicts, setIsCheckingConflicts] = useState(false);
+
   const load = useCallback(async () => {
-    setAppointments(await getAppointments());
+    const [appts, meds] = await Promise.all([getAppointments(), getMedications()]);
+    setAppointments(appts);
+    setMedications(meds);
   }, []);
 
   useEffect(() => {
@@ -62,27 +76,26 @@ const AppointmentScreen: React.FC = () => {
 
   const displayed = tab === 'upcoming' ? getUpcoming(appointments) : getPast(appointments);
 
-  // ─── Book ───────────────────────────────────────────────────────────────────
+  // ─── Build appointment object from form ──────────────────────────────────────
 
-  const handleBook = async () => {
+  const buildAppointment = (): Appointment | null => {
     if (!form.petName.trim() || !form.title.trim() || !form.date.trim()) {
       Alert.alert('Missing fields', 'Pet name, title and date are required.');
-      return;
+      return null;
     }
     const dateObj = new Date(form.date);
     if (isNaN(dateObj.getTime())) {
       Alert.alert('Invalid date', 'Use format YYYY-MM-DDTHH:MM (e.g. 2026-05-10T09:00)');
-      return;
+      return null;
     }
-
-    const appt: Appointment = {
+    return {
       id: uuid(),
       petId: form.petId.trim() || uuid(),
-      vetId: 'temp-vet-id', // Required field
+      vetId: 'temp-vet-id',
       petName: form.petName.trim(),
       title: form.title.trim(),
       date: dateObj.toISOString(),
-      time: dateObj.toTimeString().slice(0, 5), // Required HH:MM format
+      time: dateObj.toTimeString().slice(0, 5),
       type: 'ROUTINE_CHECKUP' as Appointment['type'],
       location: form.location.trim() || undefined,
       vetName: form.vetName.trim() || undefined,
@@ -91,17 +104,79 @@ const AppointmentScreen: React.FC = () => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+  };
 
+  // ─── Persist a confirmed appointment ─────────────────────────────────────────
+
+  const persistAppointment = async (appt: Appointment, resolutionNote?: string) => {
     const notifId = await scheduleAppointmentReminder(appt).catch(() => null);
     if (notifId) appt.notificationId = notifId;
-
-    await saveAppointment(appt);
+    await saveAppointment(appt, resolutionNote);
     setForm(EMPTY_FORM);
     setBookingVisible(false);
+    setConflictModalVisible(false);
+    setPendingAppointment(null);
+    setConflictResult(null);
     await load();
   };
 
-  // ─── Cancel ─────────────────────────────────────────────────────────────────
+  // ─── Book: validate → conflict check → persist ───────────────────────────────
+
+  const handleBook = async () => {
+    const appt = buildAppointment();
+    if (!appt) return;
+
+    setIsCheckingConflicts(true);
+    try {
+      const petMeds = medications.filter((m) => m.petId === appt.petId);
+      const result = await detectConflicts(appt.petId, new Date(appt.date), petMeds);
+
+      if (result.hasConflicts) {
+        setPendingAppointment(appt);
+        setConflictResult(result);
+        setConflictModalVisible(true);
+      } else {
+        await persistAppointment(appt);
+      }
+    } finally {
+      setIsCheckingConflicts(false);
+    }
+  };
+
+  // ─── Conflict modal actions ───────────────────────────────────────────────────
+
+  /** User chooses to proceed despite conflicts */
+  const handleProceedAnyway = async () => {
+    if (!pendingAppointment) return;
+    await persistAppointment(
+      pendingAppointment,
+      'User chose to proceed despite scheduling conflicts.',
+    );
+  };
+
+  /** User accepts the suggested conflict-free slot */
+  const handleUseSuggestedTime = async () => {
+    if (!pendingAppointment || !conflictResult?.suggestedTime) return;
+    const suggested = conflictResult.suggestedTime;
+    const updated: Appointment = {
+      ...pendingAppointment,
+      date: suggested.toISOString(),
+      time: suggested.toTimeString().slice(0, 5),
+    };
+    await persistAppointment(
+      updated,
+      `Rescheduled to conflict-free slot: ${suggested.toLocaleString()}.`,
+    );
+  };
+
+  /** User dismisses modal to pick a different time manually */
+  const handleCancelConflict = () => {
+    setConflictModalVisible(false);
+    setPendingAppointment(null);
+    setConflictResult(null);
+  };
+
+  // ─── Cancel appointment ────────────────────────────────────────────────────
 
   const handleCancel = (appt: Appointment) => {
     Alert.alert('Cancel appointment', `Cancel "${appt.title}"?`, [
@@ -131,10 +206,41 @@ const AppointmentScreen: React.FC = () => {
       return;
     }
 
+    setIsCheckingConflicts(true);
+    try {
+      const petMeds = medications.filter((m) => m.petId === detailAppt.petId);
+      const result = await detectConflicts(
+        detailAppt.petId,
+        dateObj,
+        petMeds,
+        detailAppt.id, // exclude self
+      );
+
+      if (result.hasConflicts) {
+        // Build a provisional updated appointment and show conflict modal
+        const provisional: Appointment = {
+          ...detailAppt,
+          date: dateObj.toISOString(),
+          status: AppointmentStatus.PENDING,
+          notificationId: undefined,
+        };
+        setPendingAppointment(provisional);
+        setConflictResult(result);
+        setRescheduleVisible(false);
+        setConflictModalVisible(true);
+      } else {
+        await doReschedule(dateObj);
+      }
+    } finally {
+      setIsCheckingConflicts(false);
+    }
+  };
+
+  const doReschedule = async (dateObj: Date, resolutionNote?: string) => {
+    if (!detailAppt) return;
     if (detailAppt.notificationId) {
       await cancelAppointmentReminder(detailAppt.notificationId).catch(() => {});
     }
-
     const updated: Appointment = {
       ...detailAppt,
       date: dateObj.toISOString(),
@@ -143,9 +249,11 @@ const AppointmentScreen: React.FC = () => {
     };
     const notifId = await scheduleAppointmentReminder(updated).catch(() => null);
     if (notifId) updated.notificationId = notifId;
-
-    await saveAppointment(updated);
+    await saveAppointment(updated, resolutionNote);
     setRescheduleVisible(false);
+    setConflictModalVisible(false);
+    setPendingAppointment(null);
+    setConflictResult(null);
     setDetailAppt(updated);
     await load();
   };
@@ -258,10 +366,87 @@ const AppointmentScreen: React.FC = () => {
                 />
               </View>
             ))}
-            <TouchableOpacity style={styles.primaryBtn} onPress={() => void handleBook()}>
-              <Text style={styles.primaryBtnText}>Confirm Booking</Text>
+            <TouchableOpacity
+              style={[styles.primaryBtn, isCheckingConflicts && styles.btnDisabled]}
+              onPress={() => void handleBook()}
+              disabled={isCheckingConflicts}
+            >
+              {isCheckingConflicts ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryBtnText}>Confirm Booking</Text>
+              )}
             </TouchableOpacity>
           </ScrollView>
+        </View>
+      </Modal>
+
+      {/* ── Conflict Warning Modal ── */}
+      <Modal
+        visible={conflictModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCancelConflict}
+      >
+        <View style={styles.overlay}>
+          <View style={styles.conflictCard}>
+            {/* Icon + title */}
+            <View style={styles.conflictHeader}>
+              <Text style={styles.conflictIcon}>⚠️</Text>
+              <Text style={styles.conflictTitle}>Scheduling Conflict</Text>
+            </View>
+
+            <Text style={styles.conflictSubtitle}>
+              The selected time conflicts with the following:
+            </Text>
+
+            {/* Conflict list */}
+            <ScrollView style={styles.conflictList} nestedScrollEnabled>
+              {(conflictResult?.conflicts ?? []).map((c, i) => (
+                <View key={i} style={styles.conflictItem}>
+                  <Text style={styles.conflictBullet}>
+                    {c.type === 'appointment' ? '📅' : '💊'}
+                  </Text>
+                  <Text style={styles.conflictDesc}>{c.description}</Text>
+                </View>
+              ))}
+            </ScrollView>
+
+            {/* Suggested time */}
+            {conflictResult?.suggestedTime && (
+              <View style={styles.suggestionBox}>
+                <Text style={styles.suggestionLabel}>💡 Next available slot:</Text>
+                <Text style={styles.suggestionTime}>
+                  {conflictResult.suggestedTime.toLocaleString([], {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </Text>
+              </View>
+            )}
+
+            {/* Actions */}
+            {conflictResult?.suggestedTime && (
+              <TouchableOpacity
+                style={styles.primaryBtn}
+                onPress={() => void handleUseSuggestedTime()}
+              >
+                <Text style={styles.primaryBtnText}>Use Suggested Time</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.warningBtn}
+              onPress={() => void handleProceedAnyway()}
+            >
+              <Text style={styles.warningBtnText}>Proceed Anyway</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={handleCancelConflict}>
+              <Text style={styles.secondaryBtnText}>Pick a Different Time</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Modal>
 
@@ -276,8 +461,8 @@ const AppointmentScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={styles.modalBody}>
-              <DetailRow label="Title" value={detailAppt.title} />
-              <DetailRow label="Pet" value={detailAppt.petName} />
+              <DetailRow label="Title" value={detailAppt.title ?? '—'} />
+              <DetailRow label="Pet" value={detailAppt.petName ?? '—'} />
               <DetailRow label="Date" value={formatLocalDate(detailAppt.date)} />
               <DetailRow label="Time" value={formatLocalTime(detailAppt.date)} />
               {detailAppt.vetName && <DetailRow label="Vet" value={`Dr. ${detailAppt.vetName}`} />}
@@ -325,8 +510,16 @@ const AppointmentScreen: React.FC = () => {
                   placeholder="2026-06-01T10:00"
                   placeholderTextColor="#9CA3AF"
                 />
-                <TouchableOpacity style={styles.primaryBtn} onPress={() => void handleReschedule()}>
-                  <Text style={styles.primaryBtnText}>Confirm</Text>
+                <TouchableOpacity
+                  style={[styles.primaryBtn, isCheckingConflicts && styles.btnDisabled]}
+                  onPress={() => void handleReschedule()}
+                  disabled={isCheckingConflicts}
+                >
+                  {isCheckingConflicts ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.primaryBtnText}>Confirm</Text>
+                  )}
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.secondaryBtn}
@@ -444,6 +637,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 16,
   },
+  btnDisabled: { opacity: 0.6 },
   primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   dangerBtn: {
     borderWidth: 1,
@@ -454,6 +648,15 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   dangerBtnText: { color: '#EF4444', fontWeight: '600', fontSize: 15 },
+  warningBtn: {
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  warningBtnText: { color: '#B45309', fontWeight: '600', fontSize: 15 },
   secondaryBtn: { paddingVertical: 12, alignItems: 'center', marginTop: 8 },
   secondaryBtnText: { color: '#6B7280', fontSize: 14 },
   detailRow: {
@@ -464,14 +667,49 @@ const styles = StyleSheet.create({
   },
   detailLabel: { width: 90, fontSize: 13, color: '#6B7280', fontWeight: '600' },
   detailValue: { flex: 1, fontSize: 14, color: '#111827' },
-  // Reschedule overlay
+  // Reschedule / conflict overlays
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'center',
     padding: 24,
   },
   overlayCard: { backgroundColor: '#fff', borderRadius: 16, padding: 24 },
+  // Conflict modal specifics
+  conflictCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 24,
+    maxHeight: '85%',
+  },
+  conflictHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  conflictIcon: { fontSize: 24 },
+  conflictTitle: { fontSize: 18, fontWeight: '700', color: '#92400E' },
+  conflictSubtitle: { fontSize: 13, color: '#6B7280', marginBottom: 12 },
+  conflictList: { maxHeight: 160, marginBottom: 8 },
+  conflictItem: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#FEF3C7',
+  },
+  conflictBullet: { fontSize: 16 },
+  conflictDesc: { flex: 1, fontSize: 13, color: '#374151', lineHeight: 18 },
+  suggestionBox: {
+    backgroundColor: '#ECFDF5',
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  suggestionLabel: { fontSize: 12, color: '#065F46', fontWeight: '600', marginBottom: 4 },
+  suggestionTime: { fontSize: 14, color: '#047857', fontWeight: '700' },
 });
 
 export default AppointmentScreen;
