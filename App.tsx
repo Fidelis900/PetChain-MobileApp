@@ -7,8 +7,10 @@ import './src/i18n';
 import StorybookUIRoot from './.storybook';
 import OfflineIndicator from './src/components/OfflineIndicator';
 import { useSplashGuard } from './src/components/SplashGuard';
+import ThemeTransitionView from './src/components/ThemeTransitionView';
 import UpdatePrompt from './src/components/UpdatePrompt';
 import { PetProvider } from './src/context/PetContext';
+import { ThemeProvider } from './src/context/ThemeContext';
 import i18n, { isRTL } from './src/i18n';
 import AppNavigator, { handleNotificationDeepLink } from './src/navigation/AppNavigator';
 import LockScreen from './src/screens/LockScreen';
@@ -133,21 +135,25 @@ function App() {
   }
 
   return (
-    <PetProvider>
-      <ErrorBoundary>
-        <View style={styles.root}>
-          <OfflineIndicator />
-          <AppNavigator />
-          <UpdatePrompt
-            visible={updateStatus.visible}
-            variant={updateStatus.visible ? updateStatus.variant : 'optional'}
-            storeUrl={updateStatus.visible ? updateStatus.storeUrl : undefined}
-            onUpdate={handleUpdate}
-            onDismiss={handleDismiss}
-          />
-        </View>
-      </ErrorBoundary>
-    </PetProvider>
+    <ThemeProvider>
+      <PetProvider>
+        <ErrorBoundary>
+          <ThemeTransitionView>
+            <View style={styles.root}>
+              <OfflineIndicator />
+              <AppNavigator />
+              <UpdatePrompt
+                visible={updateStatus.visible}
+                variant={updateStatus.visible ? updateStatus.variant : 'optional'}
+                storeUrl={updateStatus.visible ? updateStatus.storeUrl : undefined}
+                onUpdate={handleUpdate}
+                onDismiss={handleDismiss}
+              />
+            </View>
+          </ThemeTransitionView>
+        </ErrorBoundary>
+      </PetProvider>
+    </ThemeProvider>
   );
 }
 

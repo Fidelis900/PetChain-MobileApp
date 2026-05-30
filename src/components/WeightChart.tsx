@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
 import Svg, { Line, Circle, Rect, Text as SvgText, Path, Defs, LinearGradient, Stop } from 'react-native-svg';
+
+import { useAppTheme } from '../theme';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -63,6 +65,7 @@ function formatDateLabel(iso: string, compact = false): string {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const WeightChart: React.FC<Props> = ({ data, vetRecommendedRange, onExport, height = 300 }) => {
+  const colors = useAppTheme();
   const [selectedRange, setSelectedRange] = useState<DateRangeFilter>('3M');
   const [selectedPoint, setSelectedPoint] = useState<number | null>(null);
 
@@ -110,12 +113,14 @@ const WeightChart: React.FC<Props> = ({ data, vetRecommendedRange, onExport, hei
 
   if (filteredData.length === 0) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: colors.card, shadowColor: colors.shadow }]}>
         <View style={styles.header}>
-          <Text style={styles.title}>Weight & Growth Chart</Text>
+          <Text style={[styles.title, { color: colors.text }]}>Weight & Growth Chart</Text>
         </View>
         <View style={[styles.emptyContainer, { height }]}>
-          <Text style={styles.emptyText}>No weight data available for the selected period.</Text>
+          <Text style={[styles.emptyText, { color: colors.placeholder }]}>
+            No weight data available for the selected period.
+          </Text>
         </View>
       </View>
     );
@@ -136,13 +141,17 @@ const WeightChart: React.FC<Props> = ({ data, vetRecommendedRange, onExport, hei
   const yTicks = [minWeight, (minWeight + maxWeight) / 2, maxWeight];
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.card, shadowColor: colors.shadow }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Weight & Growth Chart</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Weight & Growth Chart</Text>
         {onExport && (
-          <TouchableOpacity onPress={onExport} style={styles.exportBtn} accessibilityRole="button">
-            <Text style={styles.exportText}>Export</Text>
+          <TouchableOpacity
+            onPress={onExport}
+            style={[styles.exportBtn, { backgroundColor: colors.infoMuted }]}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.exportText, { color: colors.info }]}>Export</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -153,11 +162,21 @@ const WeightChart: React.FC<Props> = ({ data, vetRecommendedRange, onExport, hei
           <TouchableOpacity
             key={range}
             onPress={() => setSelectedRange(range)}
-            style={[styles.filterBtn, selectedRange === range && styles.filterBtnActive]}
+            style={[
+              styles.filterBtn,
+              { backgroundColor: colors.muted },
+              selectedRange === range && { backgroundColor: colors.info },
+            ]}
             accessibilityRole="button"
             accessibilityState={{ selected: selectedRange === range }}
           >
-            <Text style={[styles.filterText, selectedRange === range && styles.filterTextActive]}>
+            <Text
+              style={[
+                styles.filterText,
+                { color: colors.secondaryText },
+                selectedRange === range && styles.filterTextActive,
+              ]}
+            >
               {range}
             </Text>
           </TouchableOpacity>
@@ -169,8 +188,8 @@ const WeightChart: React.FC<Props> = ({ data, vetRecommendedRange, onExport, hei
         <Svg width={chartWidth} height={height}>
           <Defs>
             <LinearGradient id="rangeGradient" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor="#4CAF50" stopOpacity="0.2" />
-              <Stop offset="1" stopColor="#4CAF50" stopOpacity="0.05" />
+              <Stop offset="0" stopColor={colors.primary} stopOpacity="0.22" />
+              <Stop offset="1" stopColor={colors.primary} stopOpacity="0.06" />
             </LinearGradient>
           </Defs>
 
@@ -195,7 +214,7 @@ const WeightChart: React.FC<Props> = ({ data, vetRecommendedRange, onExport, hei
                 y1={y}
                 x2={chartWidth - CHART_PADDING.right}
                 y2={y}
-                stroke="#e0e0e0"
+                stroke={colors.chartGrid}
                 strokeWidth="1"
                 strokeDasharray="4,4"
               />
@@ -211,7 +230,7 @@ const WeightChart: React.FC<Props> = ({ data, vetRecommendedRange, onExport, hei
                 x={CHART_PADDING.left - 8}
                 y={y + 4}
                 fontSize="11"
-                fill="#888"
+                fill={colors.chartAxis}
                 textAnchor="end"
               >
                 {tick.toFixed(1)}
@@ -220,7 +239,7 @@ const WeightChart: React.FC<Props> = ({ data, vetRecommendedRange, onExport, hei
           })}
 
           {/* Line chart */}
-          <Path d={linePath} stroke="#1976D2" strokeWidth="2.5" fill="none" />
+          <Path d={linePath} stroke={colors.chartLine} strokeWidth="2.5" fill="none" />
 
           {/* Data points */}
           {filteredData.map((point, idx) => {
@@ -235,13 +254,20 @@ const WeightChart: React.FC<Props> = ({ data, vetRecommendedRange, onExport, hei
                   cx={x}
                   cy={y}
                   r={isAnnotated ? 6 : 4}
-                  fill={isAnnotated ? '#e53e3e' : '#1976D2'}
-                  stroke="#fff"
+                  fill={isAnnotated ? colors.chartAnnotation : colors.chartLine}
+                  stroke={colors.card}
                   strokeWidth="2"
                   onPress={() => setSelectedPoint(isSelected ? null : idx)}
                 />
                 {isSelected && (
-                  <Circle cx={x} cy={y} r={10} fill="none" stroke="#1976D2" strokeWidth="1.5" />
+                  <Circle
+                    cx={x}
+                    cy={y}
+                    r={10}
+                    fill="none"
+                    stroke={colors.chartLine}
+                    strokeWidth="1.5"
+                  />
                 )}
               </React.Fragment>
             );
@@ -260,7 +286,7 @@ const WeightChart: React.FC<Props> = ({ data, vetRecommendedRange, onExport, hei
                 x={x}
                 y={y}
                 fontSize="10"
-                fill="#888"
+                fill={colors.chartAxis}
                 textAnchor="middle"
                 transform={`rotate(-45, ${x}, ${y})`}
               >
@@ -272,15 +298,17 @@ const WeightChart: React.FC<Props> = ({ data, vetRecommendedRange, onExport, hei
 
         {/* Selected point tooltip */}
         {selectedPoint !== null && filteredData[selectedPoint] && (
-          <View style={styles.tooltip}>
-            <Text style={styles.tooltipDate}>
+          <View style={[styles.tooltip, { backgroundColor: colors.cardElevated }]}>
+            <Text style={[styles.tooltipDate, { color: colors.secondaryText }]}>
               {formatDateLabel(filteredData[selectedPoint].date)}
             </Text>
-            <Text style={styles.tooltipWeight}>
+            <Text style={[styles.tooltipWeight, { color: colors.text }]}>
               {filteredData[selectedPoint].weightKg.toFixed(2)} kg
             </Text>
             {filteredData[selectedPoint].note && (
-              <Text style={styles.tooltipNote}>{filteredData[selectedPoint].note}</Text>
+              <Text style={[styles.tooltipNote, { color: colors.warning }]}>
+                {filteredData[selectedPoint].note}
+              </Text>
             )}
           </View>
         )}
@@ -290,9 +318,15 @@ const WeightChart: React.FC<Props> = ({ data, vetRecommendedRange, onExport, hei
       {vetRecommendedRange && (
         <View style={styles.legend}>
           <View style={styles.legendItem}>
-            <View style={[styles.legendBox, { backgroundColor: 'rgba(76, 175, 80, 0.2)' }]} />
-            <Text style={styles.legendText}>
-              Vet Recommended: {vetRecommendedRange.min.toFixed(1)} - {vetRecommendedRange.max.toFixed(1)} kg
+            <View
+              style={[
+                styles.legendBox,
+                { backgroundColor: colors.chartRangeFill, borderColor: colors.primary },
+              ]}
+            />
+            <Text style={[styles.legendText, { color: colors.secondaryText }]}>
+              Vet Recommended: {vetRecommendedRange.min.toFixed(1)} -{' '}
+              {vetRecommendedRange.max.toFixed(1)} kg
             </Text>
           </View>
         </View>
@@ -305,7 +339,6 @@ const WeightChart: React.FC<Props> = ({ data, vetRecommendedRange, onExport, hei
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
     shadowColor: '#000',
@@ -323,38 +356,27 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1a1a1a',
   },
   exportBtn: {
-    backgroundColor: '#e3f2fd',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 6,
   },
   exportText: {
-    color: '#1976D2',
     fontSize: 13,
     fontWeight: '600',
   },
-  filterRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-  },
+  filterRow: { flexDirection: 'row', marginBottom: 16 },
   filterBtn: {
     flex: 1,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: '#f5f5f5',
     alignItems: 'center',
-  },
-  filterBtnActive: {
-    backgroundColor: '#1976D2',
+    marginRight: 8,
   },
   filterText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#666',
   },
   filterTextActive: {
     color: '#fff',
@@ -368,31 +390,26 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
-    color: '#aaa',
     textAlign: 'center',
   },
   tooltip: {
     position: 'absolute',
     top: 8,
     right: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
     padding: 10,
     borderRadius: 8,
     minWidth: 140,
   },
   tooltipDate: {
     fontSize: 12,
-    color: '#fff',
     marginBottom: 4,
   },
   tooltipWeight: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#fff',
   },
   tooltipNote: {
     fontSize: 11,
-    color: '#ffeb3b',
     marginTop: 4,
     fontStyle: 'italic',
   },
@@ -412,11 +429,9 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     marginRight: 8,
     borderWidth: 1,
-    borderColor: '#4CAF50',
   },
   legendText: {
     fontSize: 12,
-    color: '#666',
   },
 });
 

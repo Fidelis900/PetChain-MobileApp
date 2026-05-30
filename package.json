@@ -148,6 +148,7 @@
     "react-native-image-picker": "^7.0.0",
     "react-native-image-resizer": "^1.4.5",
     "react-native-keychain": "^10.0.0",
+    "react-native-reanimated": "^4.4.0",
     "react-native-ssl-pinning": "^1.5.3",
     "react-native-webrtc": "^124.0.3",
     "secrets.js-grempe": "^1.1.0",
