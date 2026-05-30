@@ -86,6 +86,7 @@ export interface RegisterRequest {
   password: string;
   phone?: string;
   role?: string;
+  referralCode?: string;
 }
 
 /**

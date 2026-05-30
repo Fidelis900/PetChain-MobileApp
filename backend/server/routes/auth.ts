@@ -1,7 +1,11 @@
+import bcrypt from 'bcryptjs';
 import express from 'express';
+import jwt from 'jsonwebtoken';
 
+import config from '../../config';
 import { authenticateJWT, type AuthenticatedRequest } from '../../middleware/auth';
 import { UserRole } from '../../models/UserRole';
+import referralService from '../../services/referralService';
 import {
   generateBackupCodes,
   generateQRCodeDataURL,
@@ -15,6 +19,103 @@ import { ok, sendError } from '../response';
 import { store } from '../store';
 
 const router = express.Router();
+
+function authUser(user: { id: string; email: string; name: string; role: UserRole }) {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+  };
+}
+
+function issueToken(user: { id: string; email: string; role: UserRole }) {
+  return jwt.sign({ sub: user.id, email: user.email, role: user.role }, config.app.jwtSecret, {
+    expiresIn: '1h',
+  });
+}
+
+router.post('/register', async (req, res) => {
+  const { email, name, password, phone, role, referralCode, deviceFingerprint } = req.body as {
+    email?: string;
+    name?: string;
+    password?: string;
+    phone?: string;
+    role?: UserRole;
+    referralCode?: string;
+    deviceFingerprint?: string;
+  };
+
+  if (!email?.trim() || !name?.trim() || !password) {
+    return sendError(res, 400, 'VALIDATION_ERROR', 'email, name, and password are required');
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const existing = [...store.users.values()].find(
+    (user) => user.email.trim().toLowerCase() === normalizedEmail,
+  );
+  if (existing) {
+    return sendError(res, 409, 'CONFLICT', 'Email already registered');
+  }
+
+  const t = new Date().toISOString();
+  const user = {
+    id: store.newId(),
+    email: normalizedEmail,
+    name: name.trim(),
+    phone: phone?.trim(),
+    role: role || UserRole.OWNER,
+    pets: [],
+    createdAt: t,
+    updatedAt: t,
+    isEmailVerified: false,
+    passwordHash: await bcrypt.hash(password, 10),
+    twoFactorEnabled: false,
+  };
+
+  store.users.set(user.id, user);
+  referralService.ensureReferralCode(user.id);
+
+  if (referralCode?.trim()) {
+    try {
+      referralService.createPendingReferral(referralCode, user.id, {
+        deviceFingerprint,
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent'),
+      });
+    } catch {
+      // Referral attribution should not prevent account creation.
+    }
+  }
+
+  return res.status(201).json({
+    user: authUser(user),
+    token: issueToken(user),
+    expiresIn: 3600,
+  });
+});
+
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body as { email?: string; password?: string };
+  if (!email?.trim() || !password) {
+    return sendError(res, 400, 'VALIDATION_ERROR', 'email and password are required');
+  }
+
+  const user = [...store.users.values()].find(
+    (row) => row.email.trim().toLowerCase() === email.trim().toLowerCase(),
+  );
+  if (!user?.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
+    return sendError(res, 401, 'UNAUTHORIZED', 'Invalid credentials');
+  }
+
+  store.users.set(user.id, { ...user, lastLoginAt: new Date().toISOString() });
+
+  return res.json({
+    user: authUser(user),
+    token: issueToken(user),
+    expiresIn: 3600,
+  });
+});
 
 // ── POST /api/auth/2fa/setup ───────────────────────────────────────────────
 // Generates a new TOTP secret and QR code for the authenticated user.

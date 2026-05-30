@@ -4,6 +4,7 @@ import express from 'express';
 import type { AuditableRequest } from '../../middleware/auditLog';
 import { authenticateJWT, authorizeRoles, type AuthenticatedRequest } from '../../middleware/auth';
 import { UserRole } from '../../models/UserRole';
+import referralService from '../../services/referralService';
 import stellarAnchorService from '../../services/stellarService';
 import { ok, sendError } from '../response';
 import { store, type StoredMedicalRecord } from '../store';
@@ -196,6 +197,10 @@ router.post('/', authorizeRoles(UserRole.ADMIN, UserRole.VET), (req, res) => {
     updatedAt: t,
   };
   store.medicalRecords.set(id, row);
+  const pet = store.pets.get(petId.trim());
+  if (pet) {
+    referralService.completeReferralConversion(pet.ownerId, id);
+  }
   (req as AuditableRequest).audit?.('medical_record.created', 'medical_record', id, {
     petId: petId.trim(),
     type: String(type),

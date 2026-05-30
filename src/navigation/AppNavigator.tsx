@@ -33,6 +33,7 @@ import PetProfileScreen from '../screens/PetProfileScreen';
 import PetShareScreen from '../screens/PetShareScreen';
 import TravelCertificateScreen from '../screens/TravelCertificateScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import ReferralScreen from '../screens/ReferralScreen';
 import ReconciliationScreen from '../screens/ReconciliationScreen';
 import QRScannerScreen from '../screens/QRScannerScreen';
 import VaccinationScreen from '../screens/VaccinationScreen';
@@ -228,6 +229,7 @@ function MainTabs() {
         options={{ title: 'Telemedicine' }}
       />
       <Tab.Screen name="Community" component={CommunityScreen} options={{ title: 'Community' }} />
+      <Tab.Screen name="Referrals" component={ReferralScreen} options={{ title: 'Referrals' }} />
       <Tab.Screen
         name="Emergency"
         component={EmergencyContactsScreen}
@@ -264,6 +266,7 @@ const linking: LinkingOptions<RootStackParamList> = {
           Vaccinations: 'vaccinations/:vaccinationId?',
           HealthAlerts: 'health-alerts',
           Community: 'community',
+          Referrals: 'referrals',
           Emergency: 'emergency/:sosId?',
           Profile: 'profile',
         },

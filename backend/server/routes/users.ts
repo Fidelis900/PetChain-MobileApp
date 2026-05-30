@@ -4,6 +4,7 @@ import express from 'express';
 import type { AuditableRequest } from '../../middleware/auditLog';
 import { authenticateJWT, authorizeRoles, type AuthenticatedRequest } from '../../middleware/auth';
 import { UserRole } from '../../models/UserRole';
+import referralService from '../../services/referralService';
 import { userRepository, type DBUser } from '../../src/repositories/userRepository';
 import { ok, sendError } from '../response';
 import { store, type StoredUser } from '../store';
@@ -79,7 +80,7 @@ router.get('/:id', authenticateJWT, (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { email, name, phone, role } = req.body;
+  const { email, name, phone, role, referralCode, deviceFingerprint } = req.body;
   if (!email?.trim() || !name?.trim()) {
     return sendError(res, 400, 'VALIDATION_ERROR', 'email and name are required');
   }
@@ -98,6 +99,33 @@ router.post('/', async (req, res) => {
     role: (role as UserRole) || UserRole.OWNER,
     is_email_verified: false,
   });
+
+  store.users.set(id, {
+    id,
+    email: email.trim(),
+    name: name.trim(),
+    phone: phone?.trim(),
+    role: (role as UserRole) || UserRole.OWNER,
+    pets: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    isEmailVerified: false,
+    twoFactorEnabled: false,
+  });
+
+  referralService.ensureReferralCode(id);
+
+  if (typeof referralCode === 'string' && referralCode.trim()) {
+    try {
+      referralService.createPendingReferral(referralCode, id, {
+        deviceFingerprint: typeof deviceFingerprint === 'string' ? deviceFingerprint : undefined,
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent'),
+      });
+    } catch {
+      // Referral attribution should not block account creation.
+    }
+  }
 
   (req as AuditableRequest).audit?.('user.created', 'user', id, { email: email.trim() });
   return res.status(201).json(ok(sanitize(user), 'User created'));

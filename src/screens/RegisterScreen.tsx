@@ -26,6 +26,7 @@ const RegisterScreen: React.FC<Props> = ({ onSuccess, onLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [referralCode, setReferralCode] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
@@ -63,6 +64,7 @@ const RegisterScreen: React.FC<Props> = ({ onSuccess, onLogin }) => {
         name: name.trim(),
         email: email.trim(),
         password,
+        referralCode: referralCode.trim() || undefined,
       });
 
       onSuccess(session);
@@ -122,6 +124,16 @@ const RegisterScreen: React.FC<Props> = ({ onSuccess, onLogin }) => {
           value={confirm}
           onChangeText={setConfirm}
           onSubmitEditing={() => void handleRegister()}
+        />
+
+        <TextInput
+          style={styles.input}
+          placeholder="Referral Code (optional)"
+          placeholderTextColor="#aaa"
+          autoCapitalize="characters"
+          value={referralCode}
+          onChangeText={setReferralCode}
+          testID="register-referral-input"
         />
 
         <TouchableOpacity

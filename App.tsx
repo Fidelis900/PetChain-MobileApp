@@ -27,6 +27,7 @@ import {
 import updateService from './src/services/updateService';
 import { registerBackgroundMedicationTask } from './src/services/backgroundTaskService';
 import { checkAppVersion } from './src/services/versionCheckService';
+import { initializeWidgetService, refreshWidgetData } from './src/services/widgetService';
 
 const isStorybookEnabled = process.env.STORYBOOK_ENABLED === 'true';
 
@@ -110,7 +111,14 @@ function App() {
     void registerNotificationActions();
     const subscription = watchNotificationActions();
     void registerBackgroundMedicationTask();
-    return () => subscription.remove();
+    
+    // Initialize widget service and update widgets
+    const unsubscribeWidget = initializeWidgetService();
+    
+    return () => {
+      subscription.remove();
+      unsubscribeWidget();
+    };
   }, []);
 
   // Handle initial notification if app was launched from a notification tap

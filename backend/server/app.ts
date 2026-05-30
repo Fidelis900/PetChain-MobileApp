@@ -33,6 +33,7 @@ import petsRouter from './routes/pets';
 import photosRouter from './routes/photos';
 import privacyRouter from './routes/privacy';
 import reconciliationRouter from './routes/reconciliation';
+import referralsRouter from './routes/referrals';
 import reportsRouter from './routes/reports';
 import searchRouter from './routes/search';
 import syncRouter from './routes/sync';
@@ -146,6 +147,7 @@ export function createApp(): Express {
   api.use('/sync', dataRateLimiter, syncRouter);
   api.use('/travel-certificates', travelCertificatesRouter);
   api.use('/reconciliation', reconciliationRouter);
+  api.use('/referrals', dataRateLimiter, referralsRouter);
   api.use('/vets', dataRateLimiter, vetsRouter);
   api.use('/privacy', dataRateLimiter, privacyRouter);
   api.use('/insurance', dataRateLimiter, insuranceRouter);
