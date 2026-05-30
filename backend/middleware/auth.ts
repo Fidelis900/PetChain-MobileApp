@@ -1,5 +1,5 @@
 import { type NextFunction, type Request, type Response } from 'express';
-import jwt from 'jsonwebtoken';
+import * as jwt from 'jsonwebtoken';
 
 import config from '../config';
 import { UserRole } from '../models/UserRole';
@@ -87,6 +87,80 @@ export const authenticateJWT = (req: AuthenticatedRequest, res: Response, next: 
  * Middleware to authorize specific roles
  * @param roles Array of allowed roles
  */
+export const authenticateJwtOrGrant = (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader) {
+    return sendError(
+      res,
+      401,
+      'UNAUTHORIZED',
+      'Authentication required. Please provide a Bearer or Grant token.',
+    );
+  }
+
+  if (authHeader.startsWith('Bearer ')) {
+    const token = authHeader.slice(7).trim();
+    if (!token) {
+      return sendError(res, 401, 'UNAUTHORIZED', 'Authentication token missing.');
+    }
+
+    try {
+      if (config.isDev && token.startsWith('mock-')) {
+        const userId = token.slice('mock-'.length);
+        const user = store.users.get(userId);
+        if (!user) {
+          return sendError(res, 401, 'UNAUTHORIZED', 'Invalid mock token: User not found.');
+        }
+        req.user = {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+        };
+        return next();
+      }
+
+      const payload = jwt.verify(token, config.app.jwtSecret) as {
+        sub: string;
+        email: string;
+        role: UserRole;
+      };
+
+      req.user = {
+        id: payload.sub,
+        email: payload.email,
+        role: payload.role,
+      };
+      return next();
+    } catch (error) {
+      if (error instanceof jwt.TokenExpiredError) {
+        return sendError(
+          res,
+          401,
+          'TOKEN_EXPIRED',
+          'Your session has expired. Please log in again.',
+        );
+      }
+      return sendError(res, 401, 'UNAUTHORIZED', 'Invalid or malformed authentication token.');
+    }
+  }
+
+  if (authHeader.startsWith('Grant ')) {
+    return next();
+  }
+
+  return sendError(
+    res,
+    401,
+    'UNAUTHORIZED',
+    'Authentication required. Please provide a Bearer or Grant token.',
+  );
+};
+
 export const authorizeRoles = (...roles: UserRole[]) => {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
