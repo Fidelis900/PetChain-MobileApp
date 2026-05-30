@@ -302,6 +302,53 @@ export interface ListMedicalRecordsRequest extends PaginationParams {
 }
 
 /**
+ * Waitlist - Join Waitlist Request
+ */
+export interface JoinWaitlistRequest {
+  vetId: string;
+  petId: string;
+  preferredDateStart: string;
+  preferredDateEnd: string;
+}
+
+/**
+ * Waitlist - Waitlist Entry (API shape)
+ */
+export interface WaitlistEntryDto {
+  id: string;
+  userId: string;
+  vetId: string;
+  petId: string;
+  preferredDateStart: string;
+  preferredDateEnd: string;
+  status: 'WAITING' | 'NOTIFIED' | 'ACCEPTED' | 'EXPIRED' | 'CANCELLED';
+  position: number;
+  estimatedWaitMinutes: number;
+  notifiedAt: string | null;
+  acceptanceDeadline: string | null;
+  appointmentId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Waitlist - Accept Slot Request
+ */
+export interface AcceptWaitlistSlotRequest {
+  appointmentId: string;
+}
+
+/**
+ * Waitlist - Position Info Response
+ */
+export interface WaitlistPositionResponse {
+  entryId: string;
+  position: number;
+  estimatedWaitMinutes: number;
+  status: string;
+}
+
+/**
  * Blockchain - Store Record Request
  */
 export interface StoreRecordRequest {
@@ -447,6 +494,14 @@ export const API_ENDPOINTS = {
   MEDICAL_RECORDS_UPDATE: '/medical-records/:id',
   MEDICAL_RECORDS_DELETE: '/medical-records/:id',
   MEDICAL_RECORDS_BY_PET: '/medical-records/pet/:petId',
+
+  // Waitlist
+  WAITLIST_JOIN: '/waitlist',
+  WAITLIST_LEAVE: '/waitlist/:id',
+  WAITLIST_ACCEPT: '/waitlist/:id/accept',
+  WAITLIST_MY_ENTRIES: '/waitlist/me',
+  WAITLIST_POSITION: '/waitlist/:id/position',
+  WAITLIST_VET_QUEUE: '/waitlist/vet/:vetId',
 
   // Blockchain
   BLOCKCHAIN_RECORDS_VERIFY: '/blockchain/records/verify',
