@@ -25,6 +25,7 @@ import emergencyRouter from './routes/emergency';
 import forumRouter from './routes/forum';
 import importRouter from './routes/import';
 import insuranceRouter from './routes/insurance';
+import healthAlertsRouter from './routes/healthAlerts';
 import medicalRecordsRouter from './routes/medicalRecords';
 import medicationsRouter from './routes/medications';
 import paymentsRouter from './routes/payments';
@@ -150,6 +151,7 @@ export function createApp(): Express {
   api.use('/vets', dataRateLimiter, vetsRouter);
   api.use('/privacy', dataRateLimiter, privacyRouter);
   api.use('/insurance', dataRateLimiter, insuranceRouter);
+  api.use('/health-alerts', dataRateLimiter, healthAlertsRouter);
   api.use('/search', dataRateLimiter, searchRouter);
   api.use('/vitals', vitalsRouter);
   api.use('/app', appRouter);

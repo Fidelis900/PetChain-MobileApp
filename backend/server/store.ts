@@ -120,37 +120,20 @@ export interface StoredEmergencySession {
   updates: Array<{ latitude: number; longitude: number; accuracy?: number; recordedAt: string }>;
 }
 
-export interface StoredReferralCode {
-  userId: string;
-  code: string;
+export interface StoredHealthPredictionAlert {
+  id: string;
+  petId: string;
+  ownerId: string;
+  predictedIssue: string;
+  riskScore: number;
+  riskLevel: 'medium' | 'high';
+  contributingFactors: string[];
+  modelVersion: string;
+  status: 'active' | 'dismissed';
   createdAt: string;
-}
-
-export interface StoredReferral {
-  id: string;
-  referrerUserId: string;
-  referredUserId: string;
-  referralCode: string;
-  status: 'pending' | 'converted' | 'blocked';
-  signupAt: string;
-  convertedAt?: string;
-  blockedAt?: string;
-  blockReason?: string;
-  firstRecordId?: string;
-  deviceFingerprint?: string;
-  ipHash?: string;
-  userAgentHash?: string;
-}
-
-export interface StoredReferralCredit {
-  id: string;
-  userId: string;
-  referralId: string;
-  creditType: 'premium_days';
-  amount: number;
-  status: 'active' | 'redeemed' | 'expired' | 'revoked';
-  awardedAt: string;
-  expiresAt?: string;
+  dismissedAt?: string;
+  feedback?: 'helpful' | 'not_helpful' | 'already_known' | 'false_alarm';
+  feedbackNotes?: string;
 }
 
 /** Matches `backend/services/medicationService` client expectations. */
@@ -258,9 +241,7 @@ const state = seed();
 const backups = new Map<string, StoredBackup>();
 const petQrIdentities = new Map<string, StoredPetQrIdentity>();
 const emergencySessions = new Map<string, StoredEmergencySession>();
-const referralCodes = new Map<string, StoredReferralCode>();
-const referrals = new Map<string, StoredReferral>();
-const referralCredits = new Map<string, StoredReferralCredit>();
+const healthPredictionAlerts = new Map<string, StoredHealthPredictionAlert>();
 
 // ─── Travel Certificates ──────────────────────────────────────────────────────
 
@@ -305,9 +286,7 @@ export const store = {
   backups,
   petQrIdentities,
   emergencySessions,
-  referralCodes,
-  referrals,
-  referralCredits,
+  healthPredictionAlerts,
   travelCertificates,
   apiKeys,
   apiKeyUsage,
