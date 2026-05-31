@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 
 import { reminderService, type SnoozeDuration } from '../services/reminderService';
+import { useAppTheme } from '../theme';
 
 interface Props {
   visible: boolean;
@@ -32,6 +33,7 @@ export default function ReminderSnoozeModal({
   onDismiss,
   onSnoozed,
 }: Props) {
+  const colors = useAppTheme();
   const [custom, setCustom] = useState('');
   const [suggested, setSuggested] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -70,42 +72,56 @@ export default function ReminderSnoozeModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onDismiss}>
-      <View style={styles.overlay}>
-        <View style={styles.sheet}>
-          <Text style={styles.title}>Snooze Reminder</Text>
+      <View style={[styles.overlay, { backgroundColor: colors.overlay }]}>
+        <View style={[styles.sheet, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.title, { color: colors.text }]}>Snooze Reminder</Text>
 
           {suggested && (
-            <Text style={styles.suggestion}>Based on your history, {suggested} works best.</Text>
+            <Text style={[styles.suggestion, { color: colors.info }]}>
+              Based on your history, {suggested} works best.
+            </Text>
           )}
 
           <View style={styles.options}>
             {QUICK_OPTIONS.map((opt) => (
               <TouchableOpacity
                 key={opt.minutes}
-                style={styles.option}
+                style={[styles.option, { backgroundColor: colors.infoMuted }]}
                 onPress={() => handleSnooze(opt.minutes)}
                 disabled={loading}
               >
-                <Text style={styles.optionText}>{opt.label}</Text>
+                <Text style={[styles.optionText, { color: colors.info }]}>{opt.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
           <View style={styles.customRow}>
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: colors.input,
+                  borderColor: colors.border,
+                  color: colors.text,
+                },
+              ]}
+              placeholderTextColor={colors.placeholder}
               placeholder="Custom minutes"
               keyboardType="numeric"
               value={custom}
               onChangeText={setCustom}
             />
-            <TouchableOpacity style={styles.customBtn} onPress={handleCustom} disabled={loading}>
+            <TouchableOpacity
+              style={[styles.customBtn, { backgroundColor: colors.info }]}
+              onPress={handleCustom}
+              disabled={loading}
+            >
               <Text style={styles.customBtnText}>Snooze</Text>
             </TouchableOpacity>
           </View>
 
           <TouchableOpacity style={styles.dismiss} onPress={onDismiss}>
-            <Text style={styles.dismissText}>Dismiss</Text>
+            <Text style={[styles.dismissText, { color: colors.secondaryText }]}>Dismiss</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -114,17 +130,17 @@ export default function ReminderSnoozeModal({
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 24 },
+  overlay: { flex: 1, justifyContent: 'flex-end' },
+  sheet: { borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 24 },
   title: { fontSize: 18, fontWeight: '700', marginBottom: 12 },
-  suggestion: { fontSize: 13, color: '#4A90A4', marginBottom: 16 },
-  options: { flexDirection: 'row', gap: 10, marginBottom: 16 },
-  option: { flex: 1, backgroundColor: '#EDF5F7', borderRadius: 8, padding: 12, alignItems: 'center' },
-  optionText: { color: '#2F6F7E', fontWeight: '600' },
-  customRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
-  input: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10 },
-  customBtn: { backgroundColor: '#4A90A4', borderRadius: 8, padding: 10, justifyContent: 'center' },
+  suggestion: { fontSize: 13, marginBottom: 16 },
+  options: { flexDirection: 'row', marginBottom: 16 },
+  option: { flex: 1, borderRadius: 8, padding: 12, alignItems: 'center', marginRight: 10 },
+  optionText: { fontWeight: '600' },
+  customRow: { flexDirection: 'row', marginBottom: 16 },
+  input: { flex: 1, borderWidth: 1, borderRadius: 8, padding: 10 },
+  customBtn: { borderRadius: 8, padding: 10, justifyContent: 'center', marginLeft: 10 },
   customBtnText: { color: '#fff', fontWeight: '600' },
   dismiss: { alignItems: 'center', padding: 12 },
-  dismissText: { color: '#667' },
+  dismissText: {},
 });

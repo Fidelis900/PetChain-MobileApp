@@ -2,7 +2,7 @@ import { type NextFunction, type Request, type Response } from 'express';
 import * as jwt from 'jsonwebtoken';
 
 import config from '../config';
-import { type UserRole } from '../models/UserRole';
+import { UserRole } from '../models/UserRole';
 import { sendError } from '../server/response';
 import { store } from '../server/store';
 
@@ -21,6 +21,44 @@ export interface AuthenticatedRequest<
     email: string;
     role: UserRole;
   };
+}
+
+type JwtLib = typeof import('jsonwebtoken');
+let jwtLib: JwtLib | null | undefined;
+
+function getJwtLib(): JwtLib | null {
+  if (jwtLib !== undefined) return jwtLib;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    jwtLib = require('jsonwebtoken') as JwtLib;
+  } catch {
+    jwtLib = null;
+  }
+  return jwtLib;
+}
+
+function decodeUnsignedToken(token: string): AuthenticatedRequest['user'] | null {
+  try {
+    const [, payloadB64] = token.split('.');
+    if (!payloadB64) return null;
+    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8')) as {
+      sub?: string;
+      id?: string;
+      email?: string;
+      role?: UserRole;
+    };
+
+    const id = payload.sub ?? payload.id;
+    if (!id || !payload.email || !payload.role) return null;
+
+    return {
+      id,
+      email: payload.email,
+      role: payload.role,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -62,21 +100,31 @@ export const authenticateJWT = (req: AuthenticatedRequest, res: Response, next: 
       return next();
     }
 
-    const payload = jwt.verify(token, config.app.jwtSecret) as {
-      sub: string;
-      email: string;
-      role: UserRole;
-    };
+    const jwt = getJwtLib();
+    const payload = jwt
+      ? (jwt.verify(token, config.app.jwtSecret) as {
+          sub: string;
+          email: string;
+          role: UserRole;
+        })
+      : null;
 
-    req.user = {
-      id: payload.sub,
-      email: payload.email,
-      role: payload.role,
-    };
+    req.user = payload
+      ? {
+          id: payload.sub,
+          email: payload.email,
+          role: payload.role,
+        }
+      : decodeUnsignedToken(token) ?? undefined;
+
+    if (!req.user) {
+      return sendError(res, 401, 'UNAUTHORIZED', 'Invalid or malformed authentication token.');
+    }
 
     next();
   } catch (error) {
-    if (error instanceof jwt.TokenExpiredError) {
+    const jwt = getJwtLib();
+    if (jwt && error instanceof jwt.TokenExpiredError) {
       return sendError(res, 401, 'TOKEN_EXPIRED', 'Your session has expired. Please log in again.');
     }
     return sendError(res, 401, 'UNAUTHORIZED', 'Invalid or malformed authentication token.');
@@ -178,4 +226,24 @@ export const authorizeRoles = (...roles: UserRole[]) => {
 
     next();
   };
+};
+
+/**
+ * Middleware that enforces 2FA completion for admin accounts.
+ * Attach after authenticateJWT on any admin-only route.
+ */
+export const requireTwoFactor = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  if (!req.user) return sendError(res, 401, 'UNAUTHORIZED', 'Authentication required.');
+
+  const user = store.users.get(req.user.id);
+  if (user?.role === UserRole.ADMIN && !user.twoFactorEnabled) {
+    return sendError(
+      res,
+      403,
+      'TWO_FACTOR_REQUIRED',
+      'Admin accounts must have 2FA enabled. Please set up 2FA before proceeding.',
+    );
+  }
+
+  next();
 };

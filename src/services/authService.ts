@@ -1,5 +1,7 @@
 import axios, { type AxiosInstance } from 'axios';
+import * as SecureStore from 'expo-secure-store';
 
+import { hashPassword } from '../utils/encryption';
 import type {
   LoginRequest,
   LoginResponse,
@@ -352,14 +354,10 @@ let lastForegroundAt = Date.now();
 let inMemorySecret: string | null = null;
 
 export async function setPin(pin: string): Promise<void> {
-  const { hashPassword } = await import('../utils/encryption');
-  const SecureStore = await import('expo-secure-store');
   await SecureStore.setItemAsync(PIN_HASH_KEY, hashPassword(pin));
 }
 
 export async function verifyPin(pin: string): Promise<boolean> {
-  const { hashPassword } = await import('../utils/encryption');
-  const SecureStore = await import('expo-secure-store');
   const expected = await SecureStore.getItemAsync(PIN_HASH_KEY);
   const valid = !!expected && expected === hashPassword(pin);
   if (valid) {
@@ -392,10 +390,215 @@ export async function authenticateOnForeground(idleTimeoutMs?: number): Promise<
   return biometricFailures >= 3 ? 'pin_required' : 'not_required';
 }
 
+// ─── Biometric fallback (Issue #404) ─────────────────────────────────────────
+
+const FALLBACK_PREF_KEY = 'com.petchain.auth.biometric.fallback.pref';
+const MAX_BIOMETRIC_ATTEMPTS = 3;
+
+export type BiometricFallbackReason =
+  | 'unavailable'
+  | 'max_attempts_reached'
+  | 'user_preference';
+
+export interface BiometricLoginResult {
+  success: boolean;
+  fallbackRequired: boolean;
+  fallbackReason?: BiometricFallbackReason;
+  session?: StoredSession;
+}
+
+/**
+ * Attempt biometric login with automatic fallback after 3 failures.
+ * Persists fallback preference in SecureStore.
+ */
+export async function loginWithBiometricOrFallback(): Promise<BiometricLoginResult> {
+  const available = await isBiometricAuthenticationAvailable();
+  if (!available) {
+    return { success: false, fallbackRequired: true, fallbackReason: 'unavailable' };
+  }
+
+  const enabled = await isBiometricAuthenticationEnabled();
+  if (!enabled) {
+    return { success: false, fallbackRequired: true, fallbackReason: 'user_preference' };
+  }
+
+  // Check if user previously chose fallback
+  const pref = await SecureStore.getItemAsync(FALLBACK_PREF_KEY);
+  if (pref === 'pin') {
+    return { success: false, fallbackRequired: true, fallbackReason: 'user_preference' };
+  }
+
+  let attempts = 0;
+  while (attempts < MAX_BIOMETRIC_ATTEMPTS) {
+    const ok = await authenticateWithBiometric();
+    if (ok) {
+      biometricFailures = 0;
+      const session = await getSession();
+      if (!session) {
+        return { success: false, fallbackRequired: true, fallbackReason: 'unavailable' };
+      }
+      return { success: true, fallbackRequired: false, session };
+    }
+    attempts += 1;
+    biometricFailures += 1;
+  }
+
+  // Max attempts reached — switch to fallback
+  await SecureStore.setItemAsync(FALLBACK_PREF_KEY, 'pin');
+  return { success: false, fallbackRequired: true, fallbackReason: 'max_attempts_reached' };
+}
+
+/**
+ * Clear the fallback preference so biometrics are re-prompted on next login.
+ */
+export async function clearBiometricFallbackPreference(): Promise<void> {
+  await SecureStore.deleteItemAsync(FALLBACK_PREF_KEY);
+  biometricFailures = 0;
+}
+
+/**
+ * After a successful fallback login, offer to re-enable biometrics.
+ */
+export async function shouldPromptBiometricSetup(): Promise<boolean> {
+  const available = await isBiometricAuthenticationAvailable();
+  if (!available) return false;
+  const pref = await SecureStore.getItemAsync(FALLBACK_PREF_KEY);
+  return pref === 'pin';
+}
+
 export function setInMemorySecret(secret: string | null): void {
   inMemorySecret = secret;
 }
 
 export function getInMemorySecret(): string | null {
   return inMemorySecret;
+}
+
+// ─── OAuth 2.0 / PKCE ────────────────────────────────────────────────────────
+
+export interface OAuthSession extends AuthSession {
+  refreshToken: string;
+}
+
+/**
+ * Step 1: Get a PKCE challenge from the backend.
+ * The code_verifier is stored server-side; the client only holds state + code_challenge.
+ */
+export async function initOAuthPKCE(): Promise<{
+  state: string;
+  code_challenge: string;
+  code_challenge_method: string;
+}> {
+  const { data } = await authClient.post<{
+    success: boolean;
+    data: { state: string; code_challenge: string; code_challenge_method: string };
+  }>('/auth/oauth/pkce-init');
+  return data.data;
+}
+
+/**
+ * Step 2: After the user completes the provider's auth flow, send the
+ * authorization code + state to the backend for server-side token exchange.
+ * Client secrets are NEVER in the app.
+ */
+export async function loginWithOAuth(
+  provider: OAuthProvider,
+  code: string,
+  state: string,
+  name?: string, // Apple sends name only on first login
+): Promise<OAuthSession> {
+  try {
+    const { data } = await authClient.post<{
+      success: boolean;
+      data: { user: AuthSession['user']; token: string; refreshToken: string; expiresIn: number };
+    }>(`/auth/oauth/${provider}`, { code, state, name });
+
+    await storeSecureTokens({ token: data.data.token, refreshToken: data.data.refreshToken });
+
+    return {
+      user: data.data.user,
+      token: data.data.token,
+      refreshToken: data.data.refreshToken,
+      expiresIn: data.data.expiresIn,
+    };
+  } catch (err) {
+    logError(err as Error, { service: 'authService', action: 'oauth_login', provider });
+    if (axios.isAxiosError(err)) {
+      const msg = (err as AxiosLikeError).response?.data?.error?.message;
+      throw new AuthError(msg ?? `${provider} login failed`, 'OAUTH_FAILED');
+    }
+    throw new AuthError(`${provider} login failed`, 'OAUTH_FAILED');
+  }
+}
+
+/** Refresh an OAuth access token using the stored refresh token. */
+export async function refreshOAuthToken(): Promise<string> {
+  const storedRefresh = await getSecureRefreshToken();
+  if (!storedRefresh) throw new AuthError('No refresh token', 'NO_REFRESH_TOKEN');
+
+  try {
+    const { data } = await authClient.post<{
+      success: boolean;
+      data: { token: string; refreshToken: string; expiresIn: number };
+    }>('/auth/oauth/refresh', { refreshToken: storedRefresh });
+
+    await storeSecureTokens({ token: data.data.token, refreshToken: data.data.refreshToken });
+    return data.data.token;
+  } catch (err) {
+    await clearSecureTokens();
+    logError(err as Error, { service: 'authService', action: 'oauth_refresh' });
+    throw new AuthError('Token refresh failed', 'REFRESH_FAILED');
+  }
+}
+
+/** Revoke the current refresh token (logout). */
+export async function revokeOAuthToken(): Promise<void> {
+  const storedRefresh = await getSecureRefreshToken();
+  if (!storedRefresh) return;
+  try {
+    const token = await getSecureToken();
+    await authClient.post(
+      '/auth/oauth/revoke',
+      { refreshToken: storedRefresh },
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+  } catch {
+    // Best-effort — always clear local tokens
+  } finally {
+    await clearSecureTokens();
+  }
+}
+
+/** Get linked OAuth providers for the current user. */
+export async function getLinkedProviders(): Promise<
+  { provider: OAuthProvider; linkedAt: string }[]
+> {
+  const token = await getSecureToken();
+  const { data } = await authClient.get<{
+    success: boolean;
+    data: { linked: { provider: OAuthProvider; linkedAt: string }[] };
+  }>('/auth/oauth/providers', { headers: { Authorization: `Bearer ${token}` } });
+  return data.data.linked;
+}
+
+/** Link an additional OAuth provider to the current account. */
+export async function linkOAuthProvider(
+  provider: OAuthProvider,
+  code: string,
+  state: string,
+): Promise<void> {
+  const token = await getSecureToken();
+  await authClient.post(
+    '/auth/oauth/link',
+    { provider, code, state },
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+}
+
+/** Unlink an OAuth provider from the current account. */
+export async function unlinkOAuthProvider(provider: OAuthProvider): Promise<void> {
+  const token = await getSecureToken();
+  await authClient.delete(`/auth/oauth/unlink/${provider}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 }

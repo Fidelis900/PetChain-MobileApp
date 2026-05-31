@@ -1,46 +1,23 @@
-// Mock for @sentry/react-native used in Jest tests
-const mockTransaction = {
-  setStatus: jest.fn(),
-  finish: jest.fn(),
+export const SeverityLevel = {
+  fatal: 'fatal',
+  error: 'error',
+  warning: 'warning',
+  info: 'info',
+  debug: 'debug',
 };
 
-const mockScope = {
-  setExtras: jest.fn(),
-  setSpan: jest.fn(),
-};
+export const init = jest.fn();
+export const captureException = jest.fn();
+export const captureMessage = jest.fn();
+export const withScope = jest.fn((callback) => callback({ setExtras: jest.fn() }));
+export const setUser = jest.fn();
+export const addBreadcrumb = jest.fn();
 
-const mockHub = {
-  configureScope: jest.fn((cb: (scope: typeof mockScope) => void) => cb(mockScope)),
-};
-
-const Sentry = {
-  init: jest.fn(),
-  captureException: jest.fn(),
-  captureMessage: jest.fn(),
-  setUser: jest.fn(),
-  setContext: jest.fn(),
-  addBreadcrumb: jest.fn(),
-  withScope: jest.fn((cb: (scope: typeof mockScope) => void) => cb(mockScope)),
-  startTransaction: jest.fn(() => mockTransaction),
-  getCurrentHub: jest.fn(() => mockHub),
-  wrap: jest.fn((component: unknown) => component),
-  ErrorBoundary: jest.fn(({ children }: { children: React.ReactNode }) => children),
-};
-
-export default Sentry;
-export const {
+export default {
   init,
   captureException,
   captureMessage,
-  setUser,
-  setContext,
-  addBreadcrumb,
   withScope,
-  startTransaction,
-  getCurrentHub,
-  wrap,
-  ErrorBoundary,
-} = Sentry;
-
-// Re-export mock references for test assertions
-export { mockTransaction, mockScope, mockHub };
+  setUser,
+  addBreadcrumb,
+};

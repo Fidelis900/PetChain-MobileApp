@@ -3,6 +3,6 @@ module.exports = function (api) {
 
   return {
     presets: ['@babel/preset-typescript'],
-    plugins: ['@babel/plugin-transform-modules-commonjs'],
+    plugins: ['@babel/plugin-transform-modules-commonjs', 'react-native-reanimated/plugin'],
   };
 };

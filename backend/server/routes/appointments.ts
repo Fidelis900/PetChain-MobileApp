@@ -2,72 +2,132 @@
 import express from 'express';
 
 import { authenticateJWT, type AuthenticatedRequest } from '../../middleware/auth';
+import { logAuditTrail } from '../../middleware/auditLogger';
 import { AppointmentStatus, AppointmentType } from '../../models/Appointment';
 import { UserRole } from '../../models/UserRole';
+import logger from '../../utils/logger';
 import { ok, sendError } from '../response';
 import { store, type StoredAppointment } from '../store';
 
 const router = express.Router();
 
-function toResponse(a: StoredAppointment) {
-  return {
-    success: true as const,
-    data: a,
-    timestamp: new Date().toISOString(),
-  };
+// ─── Per-vet booking lock (prevents double-booking under concurrent requests) ──
+const vetLocks = new Map<string, Promise<void>>();
+
+async function withVetLock<T>(vetId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = vetLocks.get(vetId) ?? Promise.resolve();
+  let resolve!: () => void;
+  const next = new Promise<void>((r) => { resolve = r; });
+  vetLocks.set(vetId, next);
+  try {
+    await prev;
+    return await fn();
+  } finally {
+    resolve();
+    if (vetLocks.get(vetId) === next) vetLocks.delete(vetId);
+  }
 }
 
-// All appointment routes require authentication
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function toResponse(a: StoredAppointment) {
+  return { success: true as const, data: a, timestamp: new Date().toISOString() };
+}
+
+/** Returns true if two appointments overlap (considering durationMinutes). */
+function overlaps(a: StoredAppointment, startMs: number, endMs: number): boolean {
+  if (
+    a.status === AppointmentStatus.CANCELLED ||
+    a.status === AppointmentStatus.COMPLETED ||
+    a.status === AppointmentStatus.NO_SHOW
+  ) return false;
+
+  const aStart = new Date(`${a.date}T${a.time}:00Z`).getTime();
+  const aEnd = aStart + (a.durationMinutes ?? 30) * 60_000;
+  return aStart < endMs && aEnd > startMs;
+}
+
+/** Generate 30-minute availability slots for a vet on a given date (UTC). */
+function buildSlots(vetId: string, dateStr: string): string[] {
+  const slots: string[] = [];
+  const base = new Date(`${dateStr}T08:00:00Z`);
+  const end = new Date(`${dateStr}T18:00:00Z`);
+
+  const booked = [...store.appointments.values()].filter(
+    (a) =>
+      a.vetId === vetId &&
+      a.date === dateStr &&
+      a.status !== AppointmentStatus.CANCELLED &&
+      a.status !== AppointmentStatus.COMPLETED &&
+      a.status !== AppointmentStatus.NO_SHOW,
+  );
+
+  for (let t = base.getTime(); t < end.getTime(); t += 30 * 60_000) {
+    const slotEnd = t + 30 * 60_000;
+    const isTaken = booked.some((a) => {
+      const aStart = new Date(`${a.date}T${a.time}:00Z`).getTime();
+      const aEnd = aStart + (a.durationMinutes ?? 30) * 60_000;
+      return aStart < slotEnd && aEnd > t;
+    });
+    if (!isTaken) {
+      slots.push(new Date(t).toISOString().slice(11, 16)); // "HH:MM"
+    }
+  }
+  return slots;
+}
+
+// ─── Auth middleware ───────────────────────────────────────────────────────────
+
 router.use(authenticateJWT);
 
-router.get('/', (req: AuthenticatedRequest, res) => {
-  const petId = (req.query as Record<string, string | undefined>).petId;
-  const vetId = (req.query as Record<string, string | undefined>).vetId;
+// ─── GET /appointments/availability?vetId=&date= ──────────────────────────────
 
-  // Owners must provide petId
+router.get('/availability', (req: AuthenticatedRequest, res) => {
+  const { vetId, date } = req.query as Record<string, string | undefined>;
+  if (!vetId?.trim() || !date?.trim()) {
+    return sendError(res, 400, 'VALIDATION_ERROR', 'vetId and date are required');
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return sendError(res, 400, 'VALIDATION_ERROR', 'date must be YYYY-MM-DD');
+  }
+  const slots = buildSlots(vetId.trim(), date.trim());
+  logger.info('availability_queried', { vetId, date, slotsCount: slots.length });
+  return res.json({ success: true, data: { vetId, date, availableSlots: slots } });
+});
+
+// ─── GET /appointments ────────────────────────────────────────────────────────
+
+router.get('/', (req: AuthenticatedRequest, res) => {
+  const { petId, vetId } = req.query as Record<string, string | undefined>;
+
   if (req.user!.role === UserRole.OWNER && !petId) {
-    return sendError(res, 403, 'FORBIDDEN', 'PetId parameter is required for pet owners');
+    return sendError(res, 403, 'FORBIDDEN', 'petId parameter is required for pet owners');
   }
 
   if (petId) {
     const pet = store.pets.get(petId);
     if (pet && req.user!.role === UserRole.OWNER && req.user!.id !== pet.ownerId) {
-      return sendError(
-        res,
-        403,
-        'FORBIDDEN',
-        'You do not have permission to view these appointments',
-      );
+      return sendError(res, 403, 'FORBIDDEN', 'You do not have permission to view these appointments');
     }
-  }
-
-  // Vets should see their own appointments if not specified otherwise
-  if (req.user!.role === UserRole.VET && !vetId && !petId) {
-    // default to showing vet's appointments
   }
 
   let list = [...store.appointments.values()];
   if (petId) list = list.filter((a) => a.petId === petId);
   if (vetId) list = list.filter((a) => a.vetId === vetId);
-
   if (req.user!.role === UserRole.VET && !petId && !vetId) {
     list = list.filter((a) => a.vetId === req.user!.id);
   }
 
   list.sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
-  return res.json({
-    success: true,
-    data: list,
-    total: list.length,
-    timestamp: new Date().toISOString(),
-  });
+  return res.json({ success: true, data: list, total: list.length, timestamp: new Date().toISOString() });
 });
+
+// ─── GET /appointments/:id ────────────────────────────────────────────────────
 
 router.get('/:id', (req: AuthenticatedRequest, res) => {
   const row = store.appointments.get(req.params.id);
   if (!row) return sendError(res, 404, 'NOT_FOUND', 'Appointment not found');
 
-  // Authorization check
   const pet = store.pets.get(row.petId);
   if (req.user!.role === UserRole.OWNER && pet?.ownerId !== req.user!.id) {
     return sendError(res, 403, 'FORBIDDEN', 'You do not have permission to view this appointment');
@@ -79,80 +139,267 @@ router.get('/:id', (req: AuthenticatedRequest, res) => {
   return res.json(toResponse(row));
 });
 
-router.post('/', (req: AuthenticatedRequest, res) => {
+// ─── POST /appointments ───────────────────────────────────────────────────────
+
+router.post('/', async (req: AuthenticatedRequest, res) => {
   const body = req.body as Partial<StoredAppointment>;
+
   if (!body.petId?.trim() || !body.vetId?.trim() || !body.date?.trim() || !body.time?.trim()) {
     return sendError(res, 400, 'VALIDATION_ERROR', 'petId, vetId, date, and time are required');
   }
-
-  const pet = store.pets.get(body.petId.trim());
-  if (!pet) {
-    return sendError(res, 400, 'VALIDATION_ERROR', 'petId must reference an existing pet');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date.trim())) {
+    return sendError(res, 400, 'VALIDATION_ERROR', 'date must be YYYY-MM-DD');
+  }
+  if (!/^\d{2}:\d{2}$/.test(body.time.trim())) {
+    return sendError(res, 400, 'VALIDATION_ERROR', 'time must be HH:MM');
   }
 
-  // Authorization: Only owner (for their pet) or vet or admin can create appointments
+  const pet = store.pets.get(body.petId.trim());
+  if (!pet) return sendError(res, 400, 'VALIDATION_ERROR', 'petId must reference an existing pet');
+
   if (req.user!.role === UserRole.OWNER && pet.ownerId !== req.user!.id) {
     return sendError(res, 403, 'FORBIDDEN', 'You can only create appointments for your own pets');
   }
 
-  const t = new Date().toISOString();
-  const id = store.newId();
-  const row: StoredAppointment = {
-    id,
-    petId: body.petId.trim(),
-    vetId: body.vetId.trim(),
-    date: body.date.trim(),
-    time: body.time.trim(),
-    durationMinutes: body.durationMinutes ?? 30,
-    type: (body.type as AppointmentType) ?? AppointmentType.ROUTINE_CHECKUP,
-    status: (body.status as AppointmentStatus) ?? AppointmentStatus.PENDING,
-    notes: body.notes?.trim(),
-    createdAt: t,
-    updatedAt: t,
-  };
-  store.appointments.set(id, row);
-  return res.status(201).json(toResponse(row));
+  const duration = body.durationMinutes ?? 30;
+  const vetId = body.vetId.trim();
+  const date = body.date.trim();
+  const time = body.time.trim();
+
+  try {
+    const row = await withVetLock(vetId, async () => {
+      // Atomic conflict check inside the lock
+      const startMs = new Date(`${date}T${time}:00Z`).getTime();
+      const endMs = startMs + duration * 60_000;
+
+      const conflict = [...store.appointments.values()].find(
+        (a) => a.vetId === vetId && overlaps(a, startMs, endMs),
+      );
+
+      if (conflict) {
+        return null; // signal conflict
+      }
+
+      const t = new Date().toISOString();
+      const id = store.newId();
+      const newRow: StoredAppointment = {
+        id,
+        petId: body.petId!.trim(),
+        vetId,
+        date,
+        time,
+        durationMinutes: duration,
+        type: (body.type as AppointmentType) ?? AppointmentType.ROUTINE_CHECKUP,
+        status: (body.status as AppointmentStatus) ?? AppointmentStatus.PENDING,
+        notes: body.notes?.trim(),
+        timeZone: body.timeZone ?? 'UTC',
+        createdAt: t,
+        updatedAt: t,
+      };
+      store.appointments.set(id, newRow);
+      return newRow;
+    });
+
+    if (!row) {
+      return sendError(res, 409, 'CONFLICT', 'The requested time slot is not available');
+    }
+
+    void logAuditTrail({ req, entityType: 'appointment', entityId: row.id, action: 'CREATE', before: null, after: row });
+    logger.info('appointment_created', { appointmentId: row.id, vetId: row.vetId, petId: row.petId });
+    return res.status(201).json(toResponse(row));
+  } catch (err) {
+    logger.error('appointment_create_error', { error: (err as Error).message });
+    return sendError(res, 500, 'INTERNAL_ERROR', 'Failed to create appointment');
+  }
 });
 
-router.put('/:id', (req: AuthenticatedRequest, res) => {
+// ─── PUT /appointments/:id ────────────────────────────────────────────────────
+
+router.put('/:id', async (req: AuthenticatedRequest, res) => {
   const row = store.appointments.get(req.params.id);
   if (!row) return sendError(res, 404, 'NOT_FOUND', 'Appointment not found');
 
   const pet = store.pets.get(row.petId);
-  // Authorization: Only owner (for their pet), vet (if assigned), or admin can update
   const isOwner = req.user!.role === UserRole.OWNER && pet?.ownerId === req.user!.id;
   const isAssignedVet = req.user!.role === UserRole.VET && row.vetId === req.user!.id;
   const isAdmin = req.user!.role === UserRole.ADMIN;
 
   if (!isOwner && !isAssignedVet && !isAdmin) {
-    return sendError(
-      res,
-      403,
-      'FORBIDDEN',
-      'You do not have permission to update this appointment',
-    );
+    return sendError(res, 403, 'FORBIDDEN', 'You do not have permission to update this appointment');
   }
 
   const b = req.body as Partial<StoredAppointment>;
   const t = new Date().toISOString();
-  const next: StoredAppointment = {
-    ...row,
-    ...(b.date !== undefined ? { date: String(b.date) } : {}),
-    ...(b.time !== undefined ? { time: String(b.time) } : {}),
-    ...(b.durationMinutes !== undefined ? { durationMinutes: b.durationMinutes } : {}),
-    ...(b.type !== undefined ? { type: b.type as AppointmentType } : {}),
-    ...(b.status !== undefined ? { status: b.status as AppointmentStatus } : {}),
-    ...(b.notes !== undefined ? { notes: b.notes } : {}),
-    ...(b.vetId !== undefined && (isAdmin || isAssignedVet) ? { vetId: String(b.vetId) } : {}),
-    ...(b.petId !== undefined && (isAdmin || isOwner) ? { petId: String(b.petId) } : {}),
-    updatedAt: t,
-    ...(b.status === AppointmentStatus.CANCELLED
-      ? { cancelledAt: t, cancellationReason: b.cancellationReason ?? row.cancellationReason }
-      : {}),
-  };
-  store.appointments.set(row.id, next);
-  return res.json(toResponse(next));
+
+  // Detect reschedule (date or time changing)
+  const isReschedule = (b.date !== undefined && b.date !== row.date) ||
+                       (b.time !== undefined && b.time !== row.time);
+
+  const newDate = b.date !== undefined ? String(b.date) : row.date;
+  const newTime = b.time !== undefined ? String(b.time) : row.time;
+  const newDuration = b.durationMinutes !== undefined ? b.durationMinutes : (row.durationMinutes ?? 30);
+  const vetId = row.vetId;
+
+  try {
+    const next = await withVetLock(vetId, async () => {
+      if (isReschedule) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return null; // invalid
+        if (!/^\d{2}:\d{2}$/.test(newTime)) return null;
+
+        const startMs = new Date(`${newDate}T${newTime}:00Z`).getTime();
+        const endMs = startMs + newDuration * 60_000;
+
+        const conflict = [...store.appointments.values()].find(
+          (a) => a.id !== row.id && a.vetId === vetId && overlaps(a, startMs, endMs),
+        );
+        if (conflict) return 'conflict';
+      }
+
+      const updated: StoredAppointment = {
+        ...row,
+        ...(b.date !== undefined ? { date: newDate } : {}),
+        ...(b.time !== undefined ? { time: newTime } : {}),
+        ...(b.durationMinutes !== undefined ? { durationMinutes: b.durationMinutes } : {}),
+        ...(b.type !== undefined ? { type: b.type as AppointmentType } : {}),
+        ...(b.status !== undefined ? { status: b.status as AppointmentStatus } : {}),
+        ...(b.notes !== undefined ? { notes: b.notes } : {}),
+        ...(b.vetId !== undefined && (isAdmin || isAssignedVet) ? { vetId: String(b.vetId) } : {}),
+        ...(b.petId !== undefined && (isAdmin || isOwner) ? { petId: String(b.petId) } : {}),
+        ...(b.timeZone !== undefined ? { timeZone: b.timeZone } : {}),
+        updatedAt: t,
+        ...(b.status === AppointmentStatus.CANCELLED
+          ? { cancelledAt: t, cancellationReason: b.cancellationReason ?? row.cancellationReason }
+          : {}),
+        ...(isReschedule && b.status !== AppointmentStatus.CANCELLED
+          ? { rescheduledFrom: `${row.date}T${row.time}`, status: AppointmentStatus.RESCHEDULED }
+          : {}),
+      };
+      store.appointments.set(row.id, updated);
+      return updated;
+    });
+
+    if (next === null) {
+      return sendError(res, 400, 'VALIDATION_ERROR', 'Invalid date or time format');
+    }
+    if (next === 'conflict') {
+      return sendError(res, 409, 'CONFLICT', 'The requested time slot is not available');
+    }
+
+    void logAuditTrail({ req, entityType: 'appointment', entityId: row.id, action: 'UPDATE', before: row, after: next });
+    logger.info('appointment_updated', { appointmentId: row.id, isReschedule });
+    return res.json(toResponse(next as StoredAppointment));
+  } catch (err) {
+    logger.error('appointment_update_error', { error: (err as Error).message });
+    return sendError(res, 500, 'INTERNAL_ERROR', 'Failed to update appointment');
+  }
 });
+
+// ─── POST /appointments/:id/cancel ────────────────────────────────────────────
+
+router.post('/:id/cancel', async (req: AuthenticatedRequest, res) => {
+  const row = store.appointments.get(req.params.id);
+  if (!row) return sendError(res, 404, 'NOT_FOUND', 'Appointment not found');
+
+  if (row.status === AppointmentStatus.CANCELLED) {
+    return sendError(res, 400, 'VALIDATION_ERROR', 'Appointment is already cancelled');
+  }
+
+  const pet = store.pets.get(row.petId);
+  const isOwner = req.user!.role === UserRole.OWNER && pet?.ownerId === req.user!.id;
+  const isAssignedVet = req.user!.role === UserRole.VET && row.vetId === req.user!.id;
+  const isAdmin = req.user!.role === UserRole.ADMIN;
+
+  if (!isOwner && !isAssignedVet && !isAdmin) {
+    return sendError(res, 403, 'FORBIDDEN', 'You do not have permission to cancel this appointment');
+  }
+
+  const t = new Date().toISOString();
+  const { reason } = req.body as { reason?: string };
+  const cancelled: StoredAppointment = {
+    ...row,
+    status: AppointmentStatus.CANCELLED,
+    cancelledAt: t,
+    cancellationReason: reason?.trim(),
+    updatedAt: t,
+  };
+  store.appointments.set(row.id, cancelled);
+
+  void logAuditTrail({ req, entityType: 'appointment', entityId: row.id, action: 'UPDATE', before: row, after: cancelled });
+  logger.info('appointment_cancelled', { appointmentId: row.id });
+  return res.json(toResponse(cancelled));
+});
+
+// ─── POST /appointments/:id/reschedule ────────────────────────────────────────
+
+router.post('/:id/reschedule', async (req: AuthenticatedRequest, res) => {
+  const row = store.appointments.get(req.params.id);
+  if (!row) return sendError(res, 404, 'NOT_FOUND', 'Appointment not found');
+
+  if (row.status === AppointmentStatus.CANCELLED || row.status === AppointmentStatus.COMPLETED) {
+    return sendError(res, 400, 'VALIDATION_ERROR', 'Cannot reschedule a cancelled or completed appointment');
+  }
+
+  const pet = store.pets.get(row.petId);
+  const isOwner = req.user!.role === UserRole.OWNER && pet?.ownerId === req.user!.id;
+  const isAssignedVet = req.user!.role === UserRole.VET && row.vetId === req.user!.id;
+  const isAdmin = req.user!.role === UserRole.ADMIN;
+
+  if (!isOwner && !isAssignedVet && !isAdmin) {
+    return sendError(res, 403, 'FORBIDDEN', 'You do not have permission to reschedule this appointment');
+  }
+
+  const { date, time, durationMinutes } = req.body as { date?: string; time?: string; durationMinutes?: number };
+  if (!date?.trim() || !time?.trim()) {
+    return sendError(res, 400, 'VALIDATION_ERROR', 'date and time are required');
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return sendError(res, 400, 'VALIDATION_ERROR', 'date must be YYYY-MM-DD');
+  }
+  if (!/^\d{2}:\d{2}$/.test(time)) {
+    return sendError(res, 400, 'VALIDATION_ERROR', 'time must be HH:MM');
+  }
+
+  const duration = durationMinutes ?? row.durationMinutes ?? 30;
+  const vetId = row.vetId;
+
+  try {
+    const result = await withVetLock(vetId, async () => {
+      const startMs = new Date(`${date}T${time}:00Z`).getTime();
+      const endMs = startMs + duration * 60_000;
+
+      const conflict = [...store.appointments.values()].find(
+        (a) => a.id !== row.id && a.vetId === vetId && overlaps(a, startMs, endMs),
+      );
+      if (conflict) return 'conflict';
+
+      const t = new Date().toISOString();
+      const rescheduled: StoredAppointment = {
+        ...row,
+        date: date.trim(),
+        time: time.trim(),
+        durationMinutes: duration,
+        status: AppointmentStatus.RESCHEDULED,
+        rescheduledFrom: `${row.date}T${row.time}`,
+        updatedAt: t,
+      };
+      store.appointments.set(row.id, rescheduled);
+      return rescheduled;
+    });
+
+    if (result === 'conflict') {
+      return sendError(res, 409, 'CONFLICT', 'The requested time slot is not available');
+    }
+
+    void logAuditTrail({ req, entityType: 'appointment', entityId: row.id, action: 'UPDATE', before: row, after: result });
+    logger.info('appointment_rescheduled', { appointmentId: row.id, newDate: date, newTime: time });
+    return res.json(toResponse(result as StoredAppointment));
+  } catch (err) {
+    logger.error('appointment_reschedule_error', { error: (err as Error).message });
+    return sendError(res, 500, 'INTERNAL_ERROR', 'Failed to reschedule appointment');
+  }
+});
+
+// ─── DELETE /appointments/:id ─────────────────────────────────────────────────
 
 router.delete('/:id', (req: AuthenticatedRequest, res) => {
   const row = store.appointments.get(req.params.id);
@@ -163,15 +410,12 @@ router.delete('/:id', (req: AuthenticatedRequest, res) => {
   const isAdmin = req.user!.role === UserRole.ADMIN;
 
   if (!isOwner && !isAdmin) {
-    return sendError(
-      res,
-      403,
-      'FORBIDDEN',
-      'You do not have permission to delete this appointment',
-    );
+    return sendError(res, 403, 'FORBIDDEN', 'You do not have permission to delete this appointment');
   }
 
   store.appointments.delete(req.params.id);
+  void logAuditTrail({ req, entityType: 'appointment', entityId: row.id, action: 'DELETE', before: row, after: null });
+  logger.info('appointment_deleted', { appointmentId: row.id });
   return res.json(ok(null, 'Appointment deleted'));
 });
 

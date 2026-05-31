@@ -10,12 +10,14 @@ import {
 
 import { HeaderOfflineStatus, useOfflineStatus } from '../components/OfflineIndicator';
 import { OptimizedImage } from '../components/OptimizedImage';
+import PaywallModal from '../components/PaywallModal';
 import PetAggregateView from '../components/PetAggregateView';
 import PetSelectorBar from '../components/PetSelectorBar';
 import { RetryError } from '../components/RetryError';
 import SOSButton from '../components/SOSButton';
 import { usePetContext } from '../context/PetContext';
 import petService, { type Pet } from '../services/petService';
+import subscriptionService, { type SubscriptionStatus } from '../services/subscriptionService';
 import { useRetry } from '../utils/useRetry';
 
 interface Props {
@@ -27,6 +29,12 @@ const PetListScreen: React.FC<Props> = ({ onSelectPet, onAddPet }) => {
   const [pets, setPets] = useState<Pet[]>([]);
   const offlineStatus = useOfflineStatus();
   const { refreshPets } = usePetContext();
+  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>({
+    isPremium: false,
+    plan: 'free',
+    expiresAt: null,
+  });
+  const [showPaywall, setShowPaywall] = useState(false);
 
   const loadPets = useCallback(async () => {
     const data = await petService.getAllPets();
@@ -43,6 +51,25 @@ const PetListScreen: React.FC<Props> = ({ onSelectPet, onAddPet }) => {
     void execute();
   }, [execute]);
 
+  useEffect(() => {
+    subscriptionService
+      .fetchBackendStatus()
+      .then(setSubscriptionStatus)
+      .catch(() => {
+        /* keep free default */
+      });
+  }, []);
+
+  const handleAddPet = useCallback(() => {
+    const atLimit =
+      !subscriptionStatus.isPremium && pets.length >= subscriptionService.FREE_PET_LIMIT;
+    if (atLimit) {
+      setShowPaywall(true);
+    } else {
+      onAddPet();
+    }
+  }, [subscriptionStatus.isPremium, pets.length, onAddPet]);
+
   // card: padding 12 top + 12 bottom + avatar 56 + marginBottom 10 = 90
   const ITEM_HEIGHT = 90;
   const getItemLayout = useCallback(
@@ -55,13 +82,14 @@ const PetListScreen: React.FC<Props> = ({ onSelectPet, onAddPet }) => {
   );
 
   const renderItem = useCallback(
-    ({ item }: { item: Pet }) => (
+    ({ item, index }: { item: Pet; index: number }) => (
       <TouchableOpacity
         style={styles.card}
         onPress={() => onSelectPet(item)}
         accessibilityRole="button"
         accessibilityLabel={`${item.name}, ${item.species}`}
         accessibilityHint="Opens pet details"
+        testID={`pet-list-item-${index}`}
       >
         {item.photoUrl || item.thumbnailUrl ? (
           <OptimizedImage
@@ -94,7 +122,7 @@ const PetListScreen: React.FC<Props> = ({ onSelectPet, onAddPet }) => {
   );
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} testID="pet-list-screen">
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <Text style={styles.title}>My Pets</Text>
@@ -102,17 +130,18 @@ const PetListScreen: React.FC<Props> = ({ onSelectPet, onAddPet }) => {
         </View>
         <TouchableOpacity
           style={styles.addBtn}
-          onPress={onAddPet}
+          onPress={handleAddPet}
           accessibilityRole="button"
           accessibilityLabel="Add pet"
           accessibilityHint="Adds a new pet"
+          testID="add-pet-button"
         >
           <Text style={styles.addBtnText}>+ Add</Text>
         </TouchableOpacity>
       </View>
 
       {/* Pet selector bar — Issue #151/#82 */}
-      <PetSelectorBar onAddPet={onAddPet} />
+      <PetSelectorBar onAddPet={handleAddPet} />
 
       {!offlineStatus?.isOnline ? (
         <View style={styles.cachedBanner}>
@@ -160,6 +189,16 @@ const PetListScreen: React.FC<Props> = ({ onSelectPet, onAddPet }) => {
       )}
 
       <SOSButton style={styles.floatingSOS} />
+
+      <PaywallModal
+        visible={showPaywall}
+        onClose={() => setShowPaywall(false)}
+        onSubscribed={(status) => {
+          setSubscriptionStatus(status);
+          setShowPaywall(false);
+          onAddPet();
+        }}
+      />
     </View>
   );
 };

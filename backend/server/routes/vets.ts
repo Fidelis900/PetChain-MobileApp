@@ -2,13 +2,17 @@ import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 
 import { authenticateJWT, type AuthenticatedRequest } from '../../middleware/auth';
-import { ok, sendError } from '../response';
+import {
+  vetProfileCacheMiddleware,
+  vetDirectoryCacheMiddleware,
+} from '../../middleware/cacheMiddleware';
 import {
   getConversationId,
   getMessages,
   markRead,
   saveMessage,
 } from '../../services/messagingService';
+import { ok, sendError } from '../response';
 
 const router = express.Router();
 router.use(authenticateJWT);
@@ -38,14 +42,12 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
   const a =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 // GET /api/vets?lat=&lng=&radius=&specialty=&available=
-router.get('/', (req: AuthenticatedRequest, res) => {
+router.get('/', vetDirectoryCacheMiddleware(), (req: AuthenticatedRequest, res) => {
   const q = req.query as Record<string, string | undefined>;
   const lat = q.lat ? parseFloat(q.lat) : null;
   const lng = q.lng ? parseFloat(q.lng) : null;
@@ -69,7 +71,7 @@ router.get('/', (req: AuthenticatedRequest, res) => {
 });
 
 // GET /api/vets/:id
-router.get('/:id', (req: AuthenticatedRequest, res) => {
+router.get('/:id', vetProfileCacheMiddleware(), (req: AuthenticatedRequest, res) => {
   const vet = vetProfiles.get(req.params.id);
   if (!vet) return sendError(res, 404, 'NOT_FOUND', 'Vet not found');
   return res.json(ok(vet));

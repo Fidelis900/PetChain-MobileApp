@@ -63,8 +63,24 @@ export type NotificationGroup =
   | 'appointment'
   | 'vaccination'
   | 'alert'
-  | 'scheduled';
+  | 'scheduled'
+  | 'sos';
 export type NotificationAction = 'open' | 'snooze' | 'mark_as_read';
+
+// ─── Deep Link Navigation Types ───────────────────────────────────────────────
+export interface DeepLinkParams {
+  route: string;
+  params?: Record<string, any>;
+}
+
+export interface NotificationDeepLink {
+  petId?: string;
+  medicationId?: string;
+  appointmentId?: string;
+  vaccinationId?: string;
+  sosId?: string;
+  [key: string]: any;
+}
 
 export const NOTIFICATION_CATEGORIES: NotificationCategory[] = [
   'medication',
@@ -149,8 +165,22 @@ const getNotificationUrl = (data: Record<string, unknown> = {}): string => {
   if (typeof deepLink === 'string' && deepLink.length > 0) return deepLink;
 
   if (typeof data.petId === 'string') return `petchain://pets/${encodeURIComponent(data.petId)}`;
+  if (data.type === 'medication' && typeof data.medicationId === 'string') {
+    return `petchain://medications?medicationId=${encodeURIComponent(data.medicationId)}`;
+  }
+  if (data.type === 'appointment' && typeof data.appointmentId === 'string') {
+    return `petchain://appointments?appointmentId=${encodeURIComponent(data.appointmentId)}`;
+  }
+  if (data.type === 'vaccination' && typeof data.vaccinationId === 'string') {
+    return `petchain://vaccinations?vaccinationId=${encodeURIComponent(data.vaccinationId)}`;
+  }
+  if (data.type === 'sos' && typeof data.sosId === 'string') {
+    return `petchain://emergency?sosId=${encodeURIComponent(data.sosId)}`;
+  }
   if (data.type === 'medication') return 'petchain://medications';
   if (data.type === 'appointment') return 'petchain://appointments';
+  if (data.type === 'vaccination') return 'petchain://vaccinations';
+  if (data.type === 'sos') return 'petchain://emergency';
 
   return 'petchain://';
 };
@@ -222,6 +252,72 @@ export const openApp = async (notification: Notifications.Notification): Promise
   await Linking.openURL(getNotificationUrl(notification.request.content.data));
 };
 
+// ─── Deep Link Builders ───────────────────────────────────────────────────────
+
+/**
+ * Extract deep link parameters from notification data
+ */
+export const extractDeepLinkParams = (
+  data: Record<string, unknown>,
+): { route: string; params: Record<string, any> } | null => {
+  const type = data.type as NotificationGroup | undefined;
+
+  if (type === 'medication' && data.medicationId) {
+    return {
+      route: 'Medications',
+      params: { medicationId: data.medicationId },
+    };
+  }
+
+  if (type === 'appointment' && data.appointmentId) {
+    return {
+      route: 'Appointments',
+      params: { appointmentId: data.appointmentId },
+    };
+  }
+
+  if (type === 'vaccination' && data.vaccinationId) {
+    const params: Record<string, any> = { vaccinationId: data.vaccinationId };
+    if (data.petId) params.petId = data.petId;
+    if (data.dueDate) params.dueDate = data.dueDate;
+    return {
+      route: 'Vaccinations',
+      params,
+    };
+  }
+
+  if (type === 'sos' && data.sosId) {
+    return {
+      route: 'Emergency',
+      params: { sosId: data.sosId },
+    };
+  }
+
+  // Fallback to petId if available
+  if (data.petId) {
+    return {
+      route: 'PetDetail',
+      params: { petId: data.petId },
+    };
+  }
+
+  // Type-based fallback without specific ID
+  if (type === 'medication') {
+    return { route: 'Medications', params: {} };
+  }
+  if (type === 'appointment') {
+    return { route: 'Appointments', params: {} };
+  }
+  if (type === 'vaccination') {
+    return { route: 'Vaccinations', params: {} };
+  }
+  if (type === 'sos') {
+    return { route: 'Emergency', params: {} };
+  }
+
+  return null;
+};
+
 export const handleNotificationAction = async (
   response: Notifications.NotificationResponse,
 ): Promise<void> => {
@@ -280,15 +376,15 @@ export const isQuietHour = (start: string, end: string): boolean => {
 // ─── Permissions ──────────────────────────────────────────────────────────────
 
 export const requestPermissions = async (): Promise<boolean> => {
-  const { status: existing } = await Notifications.getPermissionsAsync();
-  if (existing === 'granted') return true;
-  const { status } = await Notifications.requestPermissionsAsync();
-  return status === 'granted';
+  const existing = await Notifications.getPermissionsAsync();
+  if ((existing as any).granted ?? (existing as any).status === 'granted') return true;
+  const result = await Notifications.requestPermissionsAsync();
+  return (result as any).granted ?? (result as any).status === 'granted';
 };
 
 export const checkPermissions = async (): Promise<boolean> => {
-  const { status } = await Notifications.getPermissionsAsync();
-  return status === 'granted';
+  const result = await Notifications.getPermissionsAsync();
+  return (result as any).granted ?? (result as any).status === 'granted';
 };
 
 // ─── Preferences ─────────────────────────────────────────────────────────────
@@ -431,28 +527,39 @@ export const scheduleVaccinationReminder = async (vaccination: Vaccination): Pro
   await cancelEntityNotification(vaccination.id);
 
   const dueDate = new Date(vaccination.dueDate);
-  if (dueDate <= new Date()) return '';
+  if (Number.isNaN(dueDate.getTime()) || dueDate <= new Date()) return '';
 
-  const notificationId = await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'Vaccination Reminder',
-      body: `${vaccination.name} is due soon`,
-      sound: prefs.soundEnabled ? 'default' : undefined,
-      data: {
-        type: 'vaccination' as NotificationGroup,
-        category: resolveNotificationCategory('vaccination'),
-        vaccinationId: vaccination.id,
+  const notificationIds: string[] = [];
+  for (const leadDays of [30, 7, 1]) {
+    const triggerDate = new Date(dueDate);
+    triggerDate.setDate(dueDate.getDate() - leadDays);
+    if (triggerDate <= new Date()) continue;
+
+    const notificationId = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Vaccination Reminder',
+        body: `${vaccination.name} is due in ${leadDays} day${leadDays === 1 ? '' : 's'}`,
+        sound: prefs.soundEnabled ? 'default' : undefined,
+        data: {
+          type: 'vaccination' as NotificationGroup,
+          category: resolveNotificationCategory('vaccination'),
+          vaccinationId: vaccination.id,
+          petId: vaccination.petId,
+          dueDate: vaccination.dueDate,
+          leadDays,
+        },
+        categoryIdentifier: resolveNotificationCategory('vaccination'),
       },
-      categoryIdentifier: resolveNotificationCategory('vaccination'),
-    },
-    trigger: {
-      type: 'date',
-      date: dueDate,
-    } as Notifications.DateTriggerInput,
-  });
+      trigger: {
+        type: 'date',
+        date: triggerDate,
+      } as Notifications.DateTriggerInput,
+    });
+    notificationIds.push(notificationId);
+  }
 
-  await saveNotificationIds(vaccination.id, [notificationId]);
-  return notificationId;
+  await saveNotificationIds(vaccination.id, notificationIds);
+  return notificationIds[0] ?? '';
 };
 
 // ─── Alert helpers ───────────────────────────────────────────────────────────
@@ -616,3 +723,72 @@ export const updateScheduledNotification = async (
 export const cancelScheduledNotification = async (notificationId: string): Promise<void> => {
   await cancelEntityNotification(notificationId);
 };
+
+// ─── Push token registration ──────────────────────────────────────────────────
+
+import apiClient from './apiClient';
+
+export type PushTopic =
+  | 'medication_reminders'
+  | 'appointment_alerts'
+  | 'sos_notifications'
+  | 'health_tips';
+
+export const ALL_PUSH_TOPICS: PushTopic[] = [
+  'medication_reminders',
+  'appointment_alerts',
+  'sos_notifications',
+  'health_tips',
+];
+
+/** Register the device's Expo push token with the backend. */
+export async function registerDeviceToken(): Promise<void> {
+  const granted = await requestPermissions();
+  if (!granted) return;
+
+  const tokenData = await Notifications.getExpoPushTokenAsync();
+  const token = tokenData.data;
+  await apiClient.post('/api/notifications/tokens', { token });
+}
+
+/** Remove a specific token (e.g. on logout). */
+export async function unregisterDeviceToken(token?: string): Promise<void> {
+  if (token) {
+    await apiClient.delete('/api/notifications/tokens', { data: { token } });
+  } else {
+    await apiClient.delete('/api/notifications/tokens/all');
+  }
+}
+
+/** Subscribe to a push topic. */
+export async function subscribeTopic(topic: PushTopic): Promise<void> {
+  await apiClient.put(`/api/notifications/subscriptions/${topic}`);
+}
+
+/** Unsubscribe from a push topic. */
+export async function unsubscribeTopic(topic: PushTopic): Promise<void> {
+  await apiClient.delete(`/api/notifications/subscriptions/${topic}`);
+}
+
+/** Get current topic subscriptions from backend. */
+export async function getTopicSubscriptions(): Promise<PushTopic[]> {
+  const res = await apiClient.get<{ success: boolean; data: { subscriptions: PushTopic[] } }>(
+    '/api/notifications/subscriptions',
+  );
+  return res.data.data.subscriptions;
+}
+
+/** Get push preferences from backend. */
+export async function getServerPreferences(): Promise<{ enabled: boolean; topics: Record<PushTopic, boolean> }> {
+  const res = await apiClient.get<{ success: boolean; data: { enabled: boolean; topics: Record<PushTopic, boolean> } }>(
+    '/api/notifications/preferences',
+  );
+  return res.data.data;
+}
+
+/** Update push preferences on backend. */
+export async function updateServerPreferences(
+  prefs: Partial<{ enabled: boolean; topics: Partial<Record<PushTopic, boolean>> }>,
+): Promise<void> {
+  await apiClient.patch('/api/notifications/preferences', prefs);
+}

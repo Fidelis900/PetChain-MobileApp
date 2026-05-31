@@ -4,6 +4,7 @@ import express from 'express';
 import type { AuditableRequest } from '../../middleware/auditLog';
 import { authenticateJWT, authorizeRoles, type AuthenticatedRequest } from '../../middleware/auth';
 import { UserRole } from '../../models/UserRole';
+import referralService from '../../services/referralService';
 import stellarAnchorService from '../../services/stellarService';
 import { ok, sendError } from '../response';
 import { store, type StoredMedicalRecord } from '../store';
@@ -117,6 +118,7 @@ router.get('/:id', (req: AuthenticatedRequest, res) => {
 });
 
 router.post('/:id/anchor', authorizeRoles(UserRole.ADMIN, UserRole.VET), async (req, res) => {
+  const body = req.body as { sourceSecret?: string; network?: 'testnet' | 'mainnet' };
   const row = store.medicalRecords.get(req.params.id);
   if (!row) return sendError(res, 404, 'NOT_FOUND', 'Medical record not found');
 
@@ -124,8 +126,8 @@ router.post('/:id/anchor', authorizeRoles(UserRole.ADMIN, UserRole.VET), async (
     const result = await stellarAnchorService.anchorRecord({
       recordId: row.id,
       payload: toApiRecord(row),
-      sourceSecret: typeof req.body?.sourceSecret === 'string' ? req.body.sourceSecret : undefined,
-      network: req.body?.network === 'mainnet' ? 'mainnet' : 'testnet',
+      sourceSecret: typeof body.sourceSecret === 'string' ? body.sourceSecret : undefined,
+      network: body.network === 'mainnet' ? 'mainnet' : 'testnet',
     });
 
     const next: StoredMedicalRecord = {
@@ -195,6 +197,10 @@ router.post('/', authorizeRoles(UserRole.ADMIN, UserRole.VET), (req, res) => {
     updatedAt: t,
   };
   store.medicalRecords.set(id, row);
+  const pet = store.pets.get(petId.trim());
+  if (pet) {
+    referralService.completeReferralConversion(pet.ownerId, id);
+  }
   (req as AuditableRequest).audit?.('medical_record.created', 'medical_record', id, {
     petId: petId.trim(),
     type: String(type),

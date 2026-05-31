@@ -51,6 +51,8 @@ module.exports = {
           "PetChain uses Face ID/Touch ID for secure biometric authentication to protect your pet's medical data.",
         UIBackgroundModes: ['location', 'background-fetch'],
       },
+      // App Groups for widget data sharing
+      appGroups: ['group.app.petchain.mobile'],
     },
     android: {
       adaptiveIcon: {
@@ -77,6 +79,13 @@ module.exports = {
         'READ_MEDIA_IMAGES',
       ],
       softwareKeyboardLayoutMode: 'pan',
+      // Widget configuration for Android
+      metaData: [
+        {
+          name: 'com.google.android.gms.version',
+          value: '@integer/google_play_services_version',
+        },
+      ],
     },
     web: {
       favicon: './assets/favicon.png',
@@ -91,6 +100,19 @@ module.exports = {
           // Upload source maps so stack traces are human-readable in the dashboard
           uploadNativeSymbols: true,
           uploadSourceMaps: true,
+        },
+      ],
+      // Widget support plugin (custom Expo plugin)
+      [
+        './expoWidgetPlugin.js',
+        {
+          ios: {
+            appGroup: 'group.app.petchain.mobile',
+            targetName: 'PetChainWidget',
+          },
+          android: {
+            widgetName: 'PetChainWidgetProvider',
+          },
         },
       ],
     ],

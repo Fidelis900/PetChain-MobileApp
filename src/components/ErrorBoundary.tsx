@@ -3,6 +3,9 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 
 import crashReporting from '../services/crashReporting';
 import errorLogger from '../services/errorLogger';
+import ErrorFallback from './ErrorFallback';
+import updateService from '../services/updateService';
+import { encryptedAsyncStorage } from '../utils/encryptedAsyncStorage';
 
 interface Props {
   children: React.ReactNode;
@@ -46,33 +49,33 @@ export class ErrorBoundary extends React.Component<Props, State> {
     }
   };
 
+  handleClearCache = async () => {
+    try {
+      await encryptedAsyncStorage.clear();
+    } catch (e) {
+      // ignore
+    }
+    // After clearing, offer retry by remounting
+    this.handleRetry();
+  };
+
+  handleRestart = async () => {
+    try {
+      await updateService.applyOtaUpdate();
+    } catch {
+      // ignore
+    }
+  };
+
   render() {
     if (this.state.hasError) {
       return (
-        <View style={styles.container} key={String(this.state.resetKey)}>
-          <Text style={styles.title}>Something went wrong</Text>
-          <Text style={styles.message}>
-            An unexpected error occurred. You can retry or report the issue.
-          </Text>
-          <View style={styles.actions}>
-            <TouchableOpacity
-              style={styles.btn}
-              onPress={this.handleRetry}
-              accessibilityRole="button"
-              accessibilityLabel="Retry"
-            >
-              <Text style={styles.btnText}>Retry</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.btn, styles.secondary]}
-              onPress={this.handleReport}
-              accessibilityRole="button"
-              accessibilityLabel="Report error"
-            >
-              <Text style={[styles.btnText, styles.secondaryText]}>Report</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <ErrorFallback
+          onRetry={this.handleRetry}
+          onContactSupport={this.handleReport}
+          onRestart={this.handleRestart}
+          onClearCache={this.handleClearCache}
+        />
       );
     }
 

@@ -1,0 +1,15 @@
+{
+  "keep": {
+    "days": true,
+    "amount": 14
+  },
+  "auditLog": "/workspaces/PetChain-MobileApp/logs/.8a08d87f08595c4408169a8a867ad90711c15ed2-audit.json",
+  "files": [
+    {
+      "date": 1780061533759,
+      "name": "/workspaces/PetChain-MobileApp/logs/petchain-2026-05-29.log",
+      "hash": "2dd930826a68c7011219dc5ac40cd6dad30c3dfdaf2d42c60c45ef0df1cf3f03"
+    }
+  ],
+  "hashType": "sha256"
+}

@@ -14,14 +14,24 @@ import {
 import {
   type DoseLog,
   type Medication,
+  type RefillStatus,
   deleteMedication,
   getDaySchedule,
   getDoseLogs,
   getMedications,
+  getRefillStatus,
   logDose,
+  markRefillComplete,
   saveMedication,
   scheduleRefillReminder,
+  syncRefillReminders,
 } from '../services/medicationService';
+import {
+  checkDrugInteractions,
+  getSeverityLabel,
+  recordVetOverride,
+  type InteractionCheckResult,
+} from '../services/drugInteractionService';
 import { scheduleMedicationReminder } from '../services/notificationService';
 import { formatLocalDate, formatLocalTime } from '../utils/dateLocale';
 import { useSecureScreen } from '../utils/secureScreen';
@@ -67,6 +77,14 @@ const MedicationScreen: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingMed, setEditingMed] = useState<Medication | null>(null);
   const [form, setForm] = useState<Omit<Medication, 'id'>>(EMPTY_FORM);
+  const [interactionResult, setInteractionResult] = useState<InteractionCheckResult | null>(null);
+  const [vetOverrideMode, setVetOverrideMode] = useState(false);
+  const [vetId, setVetId] = useState('');
+  const [overrideJustification, setOverrideJustification] = useState('');
+  // Refill modal state
+  const [refillModalVisible, setRefillModalVisible] = useState(false);
+  const [refillTargetMed, setRefillTargetMed] = useState<Medication | null>(null);
+  const [newSupplyInput, setNewSupplyInput] = useState('');
 
   const loadData = useCallback(async () => {
     const [meds, logs] = await Promise.all([getMedications(), getDoseLogs()]);
@@ -95,16 +113,53 @@ const MedicationScreen: React.FC = () => {
       Alert.alert('Validation', 'Pet ID, name, and dosage are required.');
       return;
     }
+
+    // Check drug interactions when adding a new medication
+    if (!editingMed) {
+      const existingNames = medications
+        .filter((m) => m.petId === form.petId.trim())
+        .map((m) => m.name);
+      const result = await checkDrugInteractions(form.name.trim(), existingNames);
+      if (result.hasInteractions && !vetOverrideMode) {
+        setInteractionResult(result);
+        return; // block save until user acknowledges or vet overrides
+      }
+      if (result.hasInteractions && vetOverrideMode) {
+        if (!vetId.trim() || !overrideJustification.trim()) {
+          Alert.alert('Override Required', 'Vet ID and justification are required to override.');
+          return;
+        }
+        for (const interaction of result.interactions) {
+          await recordVetOverride({
+            drugA: interaction.drugA,
+            drugB: interaction.drugB,
+            vetId: vetId.trim(),
+            justification: overrideJustification.trim(),
+          });
+        }
+      }
+    }
+
+    const remainingPills = form.remainingPills ? Number(form.remainingPills) : undefined;
+    const currentSupply =
+      form.currentSupply !== undefined ? Number(form.currentSupply) : remainingPills;
     const med: Medication = {
       ...form,
       id: editingMed?.id ?? Date.now().toString(),
       frequency: Number(form.frequency) || 8,
       totalPills: form.totalPills ? Number(form.totalPills) : undefined,
-      remainingPills: form.remainingPills ? Number(form.remainingPills) : undefined,
+      remainingPills,
+      currentSupply,
     };
     await saveMedication(med);
     await scheduleRefillReminder(med);
     await scheduleMedicationReminder(med);
+    // Sync refill reminder notifications whenever supply/frequency changes
+    await syncRefillReminders(med);
+    setInteractionResult(null);
+    setVetOverrideMode(false);
+    setVetId('');
+    setOverrideJustification('');
     closeModal();
     void loadData();
   };
@@ -136,11 +191,18 @@ const MedicationScreen: React.FC = () => {
       };
       await logDose(log);
       const med = medications.find((m) => m.id === medicationId);
-      if (med?.remainingPills !== undefined && !skipped) {
-        await saveMedication({
+      if (med && !skipped) {
+        // Decrement both supply fields, then resync run-out & notifications
+        const newSupply = Math.max(
+          0,
+          (med.currentSupply ?? med.remainingPills ?? 0) - 1,
+        );
+        const updatedMed: Medication = {
           ...med,
-          remainingPills: Math.max(0, med.remainingPills - 1),
-        });
+          currentSupply: newSupply,
+          remainingPills: newSupply,
+        };
+        await syncRefillReminders(updatedMed);
       }
       void loadData();
     },
@@ -157,17 +219,61 @@ const MedicationScreen: React.FC = () => {
     );
   };
 
+  const openRefillModal = useCallback((med: Medication) => {
+    setRefillTargetMed(med);
+    setNewSupplyInput('');
+    setRefillModalVisible(true);
+  }, []);
+
+  const handleRefillComplete = async () => {
+    if (!refillTargetMed) return;
+    const qty = parseInt(newSupplyInput, 10);
+    if (isNaN(qty) || qty <= 0) {
+      Alert.alert('Invalid quantity', 'Please enter a positive number of doses/pills.');
+      return;
+    }
+    await markRefillComplete(refillTargetMed, qty);
+    setRefillModalVisible(false);
+    setRefillTargetMed(null);
+    setNewSupplyInput('');
+    void loadData();
+  };
+
   const renderMedItem = useCallback(
     ({ item }: { item: Medication }) => {
+      const supply = item.currentSupply ?? item.remainingPills;
       const lowStock =
         item.remainingPills !== undefined &&
         item.totalPills !== undefined &&
         item.remainingPills <= item.totalPills * 0.2;
+      const refillStatus: RefillStatus = getRefillStatus(item);
+
+      const refillBadgeStyle = [
+        styles.refillBadge,
+        refillStatus === 'urgent' || refillStatus === 'out'
+          ? styles.refillBadgeUrgent
+          : refillStatus === 'warning'
+            ? styles.refillBadgeWarning
+            : styles.refillBadgeOk,
+      ];
+      const refillBadgeLabel: Record<RefillStatus, string> = {
+        ok: '✅ Supply OK',
+        warning: '⚠️ Refill Soon',
+        urgent: '🚨 Refill Now',
+        out: '❌ Out of Stock',
+        unknown: '',
+      };
+
       return (
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Text style={styles.medName}>{item.name}</Text>
             <View style={styles.cardActions}>
+              {refillStatus !== 'unknown' && (
+                <View style={refillBadgeStyle}>
+                  <Text style={styles.refillBadgeText}>{refillBadgeLabel[refillStatus]}</Text>
+                </View>
+              )}
               <TouchableOpacity onPress={() => openEdit(item)} style={styles.actionBtn}>
                 <Text style={styles.actionBtnText}>Edit</Text>
               </TouchableOpacity>
@@ -202,12 +308,22 @@ const MedicationScreen: React.FC = () => {
           {item.endDate ? (
             <Text style={styles.medDetail}>Ends: {formatLocalDate(item.endDate)}</Text>
           ) : null}
-          {item.remainingPills !== undefined && (
+          {supply !== undefined && (
             <Text style={[styles.medDetail, lowStock && styles.lowStock]}>
-              Pills remaining: {item.remainingPills}
+              Supply remaining: {supply} dose{supply !== 1 ? 's' : ''}
               {lowStock ? ' ⚠ Low stock' : ''}
             </Text>
           )}
+          {item.estimatedRunOutDate ? (
+            <Text style={styles.medDetail}>
+              Est. run-out: {formatLocalDate(item.estimatedRunOutDate)}
+            </Text>
+          ) : null}
+          {item.lastRefillDate ? (
+            <Text style={styles.medDetail}>
+              Last refilled: {formatLocalDate(item.lastRefillDate)}
+            </Text>
+          ) : null}
           {item.refillDate ? (
             <Text style={styles.medDetail}>Refill by: {formatLocalDate(item.refillDate)}</Text>
           ) : null}
@@ -224,11 +340,17 @@ const MedicationScreen: React.FC = () => {
             >
               <Text style={styles.logBtnText}>✗ Skip</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.logBtn, styles.refillBtn]}
+              onPress={() => openRefillModal(item)}
+            >
+              <Text style={styles.logBtnText}>+ Refill</Text>
+            </TouchableOpacity>
           </View>
         </View>
       );
     },
-    [openEdit, handleDelete, handleLogDose],
+    [openEdit, handleDelete, handleLogDose, openRefillModal],
   );
   const renderSchedule = (dates: Date[]) => (
     <ScrollView style={styles.scheduleContainer}>
@@ -415,6 +537,18 @@ const MedicationScreen: React.FC = () => {
             }
           />
           <TextInput
+            style={styles.input}
+            placeholder="Current supply (doses on hand — used for refill reminders)"
+            keyboardType="numeric"
+            value={form.currentSupply !== undefined ? String(form.currentSupply) : ''}
+            onChangeText={(v) =>
+              setForm((f) => ({
+                ...f,
+                currentSupply: v ? Number(v) : undefined,
+              }))
+            }
+          />
+          <TextInput
             style={[styles.input, styles.textArea]}
             placeholder="Notes"
             multiline
@@ -429,7 +563,87 @@ const MedicationScreen: React.FC = () => {
               <Text style={styles.saveBtnText}>Save</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Drug interaction warning */}
+          {interactionResult?.hasInteractions && (
+            <View style={styles.interactionWarning}>
+              <Text style={styles.interactionTitle}>⚠️ Drug Interaction Detected</Text>
+              {interactionResult.interactions.map((i, idx) => (
+                <View key={idx} style={styles.interactionItem}>
+                  <Text style={styles.interactionSeverity}>{getSeverityLabel(i.severity)}</Text>
+                  <Text style={styles.interactionDesc}>{i.description}</Text>
+                  <Text style={styles.interactionRec}>{i.recommendation}</Text>
+                </View>
+              ))}
+              {!vetOverrideMode ? (
+                <TouchableOpacity
+                  style={styles.overrideBtn}
+                  onPress={() => setVetOverrideMode(true)}
+                >
+                  <Text style={styles.overrideBtnText}>Vet Override</Text>
+                </TouchableOpacity>
+              ) : (
+                <View>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Vet ID *"
+                    value={vetId}
+                    onChangeText={setVetId}
+                  />
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    placeholder="Justification for override *"
+                    multiline
+                    value={overrideJustification}
+                    onChangeText={setOverrideJustification}
+                  />
+                  <TouchableOpacity style={styles.saveBtn} onPress={() => void handleSave()}>
+                    <Text style={styles.saveBtnText}>Save with Override</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          )}
         </ScrollView>
+      </View>
+    </Modal>
+  );
+
+  const renderRefillModal = () => (
+    <Modal
+      visible={refillModalVisible}
+      animationType="slide"
+      transparent
+      onRequestClose={() => setRefillModalVisible(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalContent, { paddingBottom: 30 }]}>
+          <Text style={styles.modalTitle}>Mark Refill Complete</Text>
+          {refillTargetMed && (
+            <Text style={[styles.medDetail, { marginBottom: 12 }]}>
+              {refillTargetMed.name} — enter new supply count
+            </Text>
+          )}
+          <TextInput
+            style={styles.input}
+            placeholder="New dose / pill count"
+            keyboardType="numeric"
+            value={newSupplyInput}
+            onChangeText={setNewSupplyInput}
+            autoFocus
+          />
+          <View style={styles.modalActions}>
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => setRefillModalVisible(false)}
+            >
+              <Text style={styles.cancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.saveBtn} onPress={() => void handleRefillComplete()}>
+              <Text style={styles.saveBtnText}>Confirm Refill</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
     </Modal>
   );
@@ -471,6 +685,7 @@ const MedicationScreen: React.FC = () => {
       {tab === 'daily' && renderSchedule(todayDates())}
       {tab === 'weekly' && renderSchedule(weekDates())}
       {renderModal()}
+      {renderRefillModal()}
     </View>
   );
 };
@@ -534,7 +749,18 @@ const styles = StyleSheet.create({
   deleteBtnText: { color: '#e53935' },
   medDetail: { fontSize: 13, color: '#555', marginTop: 2 },
   lowStock: { color: '#e65100', fontWeight: '600' },
-  doseActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  doseActions: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' },
+  // Refill badge
+  refillBadge: {
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginRight: 4,
+  },
+  refillBadgeOk: { backgroundColor: '#e8f5e9' },
+  refillBadgeWarning: { backgroundColor: '#fff8e1' },
+  refillBadgeUrgent: { backgroundColor: '#fdecea' },
+  refillBadgeText: { fontSize: 11, fontWeight: '700' },
   logBtn: {
     flex: 1,
     backgroundColor: '#4CAF50',
@@ -543,6 +769,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   skipBtn: { backgroundColor: '#9e9e9e' },
+  refillBtn: { backgroundColor: '#1565C0' },
   logBtnText: { color: '#fff', fontWeight: '600', fontSize: 13 },
   scheduleContainer: { flex: 1, padding: 12 },
   dayBlock: { marginBottom: 16 },
@@ -614,6 +841,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   saveBtnText: { color: '#fff', fontWeight: '600' },
+  interactionWarning: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: '#FFF3CD',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FFCA28',
+  },
+  interactionTitle: { fontSize: 15, fontWeight: '700', color: '#7B4F00', marginBottom: 8 },
+  interactionItem: { marginBottom: 10 },
+  interactionSeverity: { fontWeight: '700', fontSize: 13, marginBottom: 2 },
+  interactionDesc: { fontSize: 13, color: '#333', marginBottom: 2 },
+  interactionRec: { fontSize: 12, color: '#555', fontStyle: 'italic' },
+  overrideBtn: {
+    marginTop: 8,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#E53935',
+    alignItems: 'center',
+  },
+  overrideBtnText: { color: '#fff', fontWeight: '700' },
 });
 
 export default MedicationScreen;

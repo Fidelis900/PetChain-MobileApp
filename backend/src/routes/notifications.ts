@@ -1,0 +1,178 @@
+import { randomUUID } from 'crypto';
+
+import express from 'express';
+
+import { authenticateJWT, authorizeRoles, type AuthenticatedRequest } from '../../middleware/auth';
+import { UserRole } from '../../models/UserRole';
+import { ok, sendError } from '../response';
+import logger from '../../utils/logger';
+import {
+  ALL_TOPICS,
+  type NotificationTopic,
+  clearDLQ,
+  getDLQ,
+  getMetrics,
+  getPreferences,
+  getSubscriptions,
+  getTokens,
+  registerToken,
+  removeAllTokens,
+  removeToken,
+  sendToUser,
+  setPreferences,
+  subscribe,
+  unsubscribe,
+} from '../../services/pushService';
+
+const router = express.Router();
+router.use(authenticateJWT);
+
+// ─── Device token registration ────────────────────────────────────────────────
+
+/** POST /api/notifications/tokens — register a push token */
+router.post('/tokens', async (req: AuthenticatedRequest, res) => {
+  const { token } = req.body as { token?: string };
+  if (!token?.trim()) return sendError(res, 400, 'VALIDATION_ERROR', 'token is required');
+
+  try {
+    await registerToken(req.user!.id, token.trim());
+    logger.info('device_token_registered', { userId: req.user!.id });
+    return res.status(201).json(ok(null, 'Token registered'));
+  } catch (err) {
+    return sendError(res, 400, 'VALIDATION_ERROR', err instanceof Error ? err.message : 'Invalid token');
+  }
+});
+
+/** GET /api/notifications/tokens — list registered tokens for current user */
+router.get('/tokens', async (req: AuthenticatedRequest, res) => {
+  const tokens = await getTokens(req.user!.id);
+  // Never expose full tokens in list — return count + masked prefixes
+  const masked = tokens.map((t) => ({ prefix: t.slice(0, 22) + '…' }));
+  return res.json(ok({ count: tokens.length, tokens: masked }));
+});
+
+/** DELETE /api/notifications/tokens — remove a specific token */
+router.delete('/tokens', async (req: AuthenticatedRequest, res) => {
+  const { token } = req.body as { token?: string };
+  if (!token?.trim()) return sendError(res, 400, 'VALIDATION_ERROR', 'token is required');
+  await removeToken(req.user!.id, token.trim());
+  return res.json(ok(null, 'Token removed'));
+});
+
+/** DELETE /api/notifications/tokens/all — remove all tokens (logout) */
+router.delete('/tokens/all', async (req: AuthenticatedRequest, res) => {
+  await removeAllTokens(req.user!.id);
+  return res.json(ok(null, 'All tokens removed'));
+});
+
+// ─── Topic subscriptions ──────────────────────────────────────────────────────
+
+/** GET /api/notifications/subscriptions */
+router.get('/subscriptions', async (req: AuthenticatedRequest, res) => {
+  const subs = await getSubscriptions(req.user!.id);
+  return res.json(ok({ subscriptions: subs, available: ALL_TOPICS }));
+});
+
+/** PUT /api/notifications/subscriptions/:topic */
+router.put('/subscriptions/:topic', async (req: AuthenticatedRequest, res) => {
+  const topic = req.params.topic as NotificationTopic;
+  if (!ALL_TOPICS.includes(topic)) {
+    return sendError(res, 400, 'VALIDATION_ERROR', `Unknown topic. Valid: ${ALL_TOPICS.join(', ')}`);
+  }
+  await subscribe(req.user!.id, topic);
+  return res.json(ok(null, `Subscribed to ${topic}`));
+});
+
+/** DELETE /api/notifications/subscriptions/:topic */
+router.delete('/subscriptions/:topic', async (req: AuthenticatedRequest, res) => {
+  const topic = req.params.topic as NotificationTopic;
+  if (!ALL_TOPICS.includes(topic)) {
+    return sendError(res, 400, 'VALIDATION_ERROR', `Unknown topic. Valid: ${ALL_TOPICS.join(', ')}`);
+  }
+  await unsubscribe(req.user!.id, topic);
+  return res.json(ok(null, `Unsubscribed from ${topic}`));
+});
+
+// ─── Preferences ──────────────────────────────────────────────────────────────
+
+/** GET /api/notifications/preferences */
+router.get('/preferences', async (req: AuthenticatedRequest, res) => {
+  const prefs = await getPreferences(req.user!.id);
+  return res.json(ok(prefs));
+});
+
+/** PATCH /api/notifications/preferences */
+router.patch('/preferences', async (req: AuthenticatedRequest, res) => {
+  const body = req.body as { enabled?: boolean; topics?: Partial<Record<NotificationTopic, boolean>> };
+
+  if (body.enabled !== undefined && typeof body.enabled !== 'boolean') {
+    return sendError(res, 400, 'VALIDATION_ERROR', 'enabled must be a boolean');
+  }
+  if (body.topics) {
+    for (const key of Object.keys(body.topics)) {
+      if (!ALL_TOPICS.includes(key as NotificationTopic)) {
+        return sendError(res, 400, 'VALIDATION_ERROR', `Unknown topic: ${key}`);
+      }
+    }
+  }
+
+  await setPreferences(req.user!.id, body);
+  const updated = await getPreferences(req.user!.id);
+  return res.json(ok(updated));
+});
+
+// ─── Send (internal / admin) ──────────────────────────────────────────────────
+
+/** POST /api/notifications/send — send a push to a user (admin only) */
+router.post(
+  '/send',
+  authorizeRoles(UserRole.ADMIN),
+  async (req: AuthenticatedRequest, res) => {
+    const { userId, topic, title, body, data } = req.body as {
+      userId?: string;
+      topic?: string;
+      title?: string;
+      body?: string;
+      data?: Record<string, unknown>;
+    };
+
+    if (!userId?.trim()) return sendError(res, 400, 'VALIDATION_ERROR', 'userId is required');
+    if (!topic || !ALL_TOPICS.includes(topic as NotificationTopic)) {
+      return sendError(res, 400, 'VALIDATION_ERROR', `topic must be one of: ${ALL_TOPICS.join(', ')}`);
+    }
+    if (!title?.trim()) return sendError(res, 400, 'VALIDATION_ERROR', 'title is required');
+    if (!body?.trim()) return sendError(res, 400, 'VALIDATION_ERROR', 'body is required');
+
+    const enqueued = await sendToUser(
+      userId.trim(),
+      topic as NotificationTopic,
+      title.trim(),
+      body.trim(),
+      data,
+    );
+    return res.json(ok({ enqueued }));
+  },
+);
+
+// ─── Metrics (admin) ──────────────────────────────────────────────────────────
+
+/** GET /api/notifications/metrics */
+router.get('/metrics', authorizeRoles(UserRole.ADMIN), async (_req, res) => {
+  const metrics = await getMetrics();
+  return res.json(ok(metrics));
+});
+
+/** GET /api/notifications/dlq */
+router.get('/dlq', authorizeRoles(UserRole.ADMIN), async (req, res) => {
+  const limit = Math.min(parseInt((req.query.limit as string) ?? '50'), 200);
+  const items = await getDLQ(limit);
+  return res.json(ok({ count: items.length, items }));
+});
+
+/** DELETE /api/notifications/dlq */
+router.delete('/dlq', authorizeRoles(UserRole.ADMIN), async (_req, res) => {
+  await clearDLQ();
+  return res.json(ok(null, 'DLQ cleared'));
+});
+
+export default router;

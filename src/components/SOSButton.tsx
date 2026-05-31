@@ -119,10 +119,11 @@ const SOSButton: React.FC<SOSButtonProps> = ({ onSOSSent, style }) => {
         style={[styles.button, styles.countdownButton, style]}
         onPress={cancelSOS}
         activeOpacity={0.9}
+        testID="sos-confirm-dialog"
       >
         <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
           <Text style={styles.countdownText}>{countdown}</Text>
-          <Text style={styles.cancelText}>TAP TO CANCEL</Text>
+          <Text style={styles.cancelText} testID="sos-cancel-button">TAP TO CANCEL</Text>
         </Animated.View>
       </TouchableOpacity>
     );
@@ -135,6 +136,7 @@ const SOSButton: React.FC<SOSButtonProps> = ({ onSOSSent, style }) => {
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         activeOpacity={1}
+        testID="sos-button"
       >
         <View style={styles.content}>
           <Text style={styles.buttonText}>🚨 SOS EMERGENCY</Text>

@@ -109,3 +109,69 @@ For new features, provide:
 - Be respectful and constructive in discussions.
 
 Thank you for contributing to PetChain-MobileApp!
+
+## End-to-End (E2E) Testing with Detox
+
+PetChain uses [Detox](https://wix.github.io/Detox/) for end-to-end testing on iOS Simulator and Android Emulator.
+
+### Prerequisites
+
+- Xcode (iOS) or Android Studio (Android) installed
+- A running simulator/emulator
+- App built in debug or release mode (see below)
+
+### Setup
+
+```bash
+# Install Detox CLI globally
+npm install -g detox-cli
+
+# Install project dependencies (Detox is included as a devDependency)
+npm install
+```
+
+### Build the app for E2E
+
+```bash
+# iOS debug build
+detox build --configuration ios.sim.debug
+
+# Android debug build
+detox build --configuration android.emu.debug
+```
+
+### Run E2E tests
+
+```bash
+# iOS
+detox test --configuration ios.sim.debug
+
+# Android
+detox test --configuration android.emu.debug
+```
+
+### Run against a seeded test database
+
+```bash
+# Seed minimal test data first
+npm run seed:test
+
+# Then run E2E tests
+detox test --configuration ios.sim.debug
+```
+
+### Test suites
+
+| File | Covers |
+|------|--------|
+| `e2e/onboarding.test.ts` | User registration → login flow |
+| `e2e/addPet.test.ts` | Add a new pet |
+| `e2e/healthRecord.test.ts` | Log a health record + search |
+| `e2e/sos.test.ts` | Emergency SOS flow |
+
+### Configuration
+
+Detox is configured in `.detoxrc.js` at the project root. Supported configurations:
+
+- `ios.sim.debug` / `ios.sim.release`
+- `android.emu.debug` / `android.emu.release`

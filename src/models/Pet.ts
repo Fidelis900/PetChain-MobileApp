@@ -10,6 +10,7 @@ export interface Pet {
   species: Species;
   breed?: string;
   dateOfBirth?: string;
+  weightKg?: number;
   microchipId?: string;
   photoUrl?: string;
   ownerId: string;
@@ -27,6 +28,7 @@ export const createPet = (data: Partial<Pet>): Pet => ({
   species: data.species || 'other',
   breed: data.breed,
   dateOfBirth: data.dateOfBirth,
+  weightKg: data.weightKg,
   microchipId: data.microchipId,
   photoUrl: data.photoUrl,
   ownerId: data.ownerId || '',
@@ -39,6 +41,7 @@ export interface PetFormData {
   species: Species;
   breed?: string;
   dateOfBirth?: string;
+  weightKg?: number;
   microchipId?: string;
   photoUrl?: string;
 }

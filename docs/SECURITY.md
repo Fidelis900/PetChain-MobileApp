@@ -126,13 +126,84 @@ Findings and remediations are tracked in the GitHub Security Advisories section 
 
 ---
 
-## 6. Dependency Auditing
+## 6. Dependency Auditing & Vulnerability Scanning
+
+### Automated Scanning
+
+The project uses multiple layers of automated dependency vulnerability scanning:
+
+#### npm audit
+- Runs on every PR and daily on main branch
+- Blocks PRs with critical or high severity vulnerabilities
+- Generates detailed vulnerability reports
 
 ```bash
 npm audit --audit-level=high
 ```
 
-Run on every CI build. PRs with unresolved High or Critical audit warnings are blocked from merging.
+#### Snyk Integration
+- Advanced vulnerability scanning with threat intelligence
+- Detects vulnerabilities in transitive dependencies
+- Provides remediation guidance
+- Requires `SNYK_TOKEN` secret in GitHub
+
+#### Dependabot
+- Automated dependency updates (weekly)
+- Automatic PR creation for available patches
+- Configured in `.github/dependabot.yml`
+- Covers npm packages and GitHub Actions
+
+### Security Patch Process
+
+1. **Automated Detection**: Dependabot and npm audit detect vulnerabilities
+2. **Patch Creation**: Security patches workflow auto-creates PRs with fixes
+3. **Review & Test**: Team reviews changes and runs full test suite
+4. **Merge**: Once CI passes and review is approved, merge to main
+5. **Deploy**: Changes are automatically deployed via CD pipeline
+
+### Manual Audit
+
+Run locally to check for vulnerabilities:
+
+```bash
+# Check for vulnerabilities
+npm audit
+
+# Automatically fix vulnerabilities
+npm audit fix
+
+# Force major version updates (use with caution)
+npm audit fix --force
+```
+
+### Handling Vulnerabilities
+
+**Critical or High Severity:**
+- Must be fixed immediately
+- PRs with unresolved critical/high vulnerabilities are blocked
+- If no patch is available, consider alternative packages
+
+**Moderate Severity:**
+- Should be addressed within 2 weeks
+- Plan updates during regular maintenance windows
+
+**Low Severity:**
+- Address during regular dependency updates
+- Document any accepted risks
+
+### Accepted Risks
+
+If a vulnerability cannot be fixed (e.g., no patch available, breaking changes), document it:
+
+```markdown
+## Accepted Risk: [CVE-XXXX-XXXXX]
+
+**Package:** [package-name]
+**Severity:** [Critical/High/Moderate]
+**Reason:** [Explanation of why risk is accepted]
+**Mitigation:** [Compensating controls]
+**Review Date:** [Date for re-evaluation]
+```
 
 ---
 
@@ -144,11 +215,69 @@ Run on every CI build. PRs with unresolved High or Critical audit warnings are b
 | `JWT_SECRET` | Yes | ≥ 32 random bytes, base64-encoded |
 | `QR_SIGNING_SECRET` | Yes | ≥ 32 random bytes for HMAC QR signing |
 | `ALLOWED_ORIGINS` | No | Extra CSP `connect-src` origins (comma-separated) |
+| `SNYK_TOKEN` | No | Snyk API token for vulnerability scanning |
 
 See `.env.example` for the full list.
 
 ---
 
-## 8. Reporting a Vulnerability
+## 8. CI/CD Security
+
+### Workflows
+
+- **security-audit.yml** — Runs npm audit and Snyk on every PR and daily
+- **security-patches.yml** — Auto-creates PRs for available security patches
+- **ci.yml** — Lint, typecheck, and tests on every PR
+- **deploy.yml** — Production build and deployment
+
+### Branch Protection
+
+Main branch requires:
+- ✅ All CI checks pass (lint, tests, security audit)
+- ✅ No critical or high severity vulnerabilities
+- ✅ Code review approval
+- ✅ Up-to-date with base branch
+
+---
+
+## 9. Reporting a Vulnerability
 
 Please report security vulnerabilities via GitHub's private vulnerability reporting tool or by e-mailing **security@petchain.app**. Do not open public issues for security problems.
+
+### Responsible Disclosure
+
+- Allow 90 days for a fix before public disclosure
+- Provide detailed reproduction steps
+- Include affected versions
+- Suggest remediation if possible
+
+---
+
+## 10. Security Checklist for Developers
+
+Before committing code:
+
+- [ ] No hardcoded secrets or credentials
+- [ ] All user inputs are validated and sanitized
+- [ ] Database queries use parameterized statements
+- [ ] Authentication/authorization checks are in place
+- [ ] Error messages don't leak sensitive information
+- [ ] Dependencies are up-to-date and vulnerability-free
+- [ ] No console.log statements with sensitive data
+- [ ] HTTPS is enforced in production
+- [ ] Security headers are properly configured
+
+---
+
+## 11. Security Incident Response
+
+In case of a security incident:
+
+1. **Assess** — Determine scope and severity
+2. **Contain** — Limit exposure and prevent further damage
+3. **Eradicate** — Remove the vulnerability or malicious code
+4. **Recover** — Restore systems to normal operation
+5. **Review** — Conduct post-incident analysis
+6. **Communicate** — Notify affected users if necessary
+
+Contact: security@petchain.app

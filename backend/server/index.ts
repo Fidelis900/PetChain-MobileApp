@@ -1,6 +1,8 @@
 import http from 'http';
 
 import { createApp } from './app';
+import apiKeyService from '../services/apiKeyService';
+import logger from '../utils/logger';
 import { checkDatabaseConnection, runMigrations } from '../config/database';
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -13,19 +15,19 @@ function shutdown(signal: NodeJS.Signals, server: http.Server): void {
   if (isShuttingDown) return;
   isShuttingDown = true;
 
-  console.warn(`[server] Received ${signal} — starting graceful shutdown`);
+  logger.warn(`Received ${signal} — starting graceful shutdown`);
 
   server.close((err) => {
     if (err) {
-      console.error('[server] Error while closing server:', err);
+      logger.error('Error while closing server', { error: err.message });
       process.exit(1);
     }
-    console.warn('[server] All connections drained — exiting cleanly');
+    logger.info('All connections drained — exiting cleanly');
     process.exit(0);
   });
 
   setTimeout(() => {
-    console.error('[server] Graceful shutdown timed out — forcing exit');
+    logger.error('Graceful shutdown timed out — forcing exit');
     process.exit(1);
   }, 9_000).unref();
 }
@@ -35,7 +37,7 @@ function shutdown(signal: NodeJS.Signals, server: http.Server): void {
 async function start(): Promise<void> {
   // Verify DB connectivity before running migrations
   await checkDatabaseConnection();
-  console.warn('[server] Database connection verified.');
+  logger.info('[server] Database connection verified.');
 
   // Run pending migrations (idempotent, advisory-locked by node-pg-migrate)
   await runMigrations();
@@ -47,14 +49,19 @@ async function start(): Promise<void> {
   process.on('SIGINT', () => shutdown('SIGINT', server));
 
   server.listen(PORT, () => {
-    console.warn(`PetChain REST API listening on http://localhost:${PORT}/api`);
-    console.warn(`Health:  http://localhost:${PORT}/api/health`);
-    console.warn(`Ready:   http://localhost:${PORT}/api/ready`);
+    logger.info(`PetChain REST API listening on http://localhost:${PORT}/api`);
+    logger.info(`Health:  http://localhost:${PORT}/api/health`);
+    logger.info(`Ready:   http://localhost:${PORT}/api/ready`);
+    logger.info(`Admin:   http://localhost:${PORT}/admin/api-keys.html`);
+
+    // Revoke rotated keys automatically once their overlap window ends
+    setInterval(() => apiKeyService.processRotationExpiry(), 60_000).unref();
+
     if (process.send) process.send('ready');
   });
 }
 
 start().catch((err) => {
-  console.error('[server] Startup failed:', err);
+  logger.error('[server] Startup failed:', err);
   process.exit(1);
 });
