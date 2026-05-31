@@ -473,3 +473,132 @@ export function setInMemorySecret(secret: string | null): void {
 export function getInMemorySecret(): string | null {
   return inMemorySecret;
 }
+
+// ─── OAuth 2.0 / PKCE ────────────────────────────────────────────────────────
+
+export interface OAuthSession extends AuthSession {
+  refreshToken: string;
+}
+
+/**
+ * Step 1: Get a PKCE challenge from the backend.
+ * The code_verifier is stored server-side; the client only holds state + code_challenge.
+ */
+export async function initOAuthPKCE(): Promise<{
+  state: string;
+  code_challenge: string;
+  code_challenge_method: string;
+}> {
+  const { data } = await authClient.post<{
+    success: boolean;
+    data: { state: string; code_challenge: string; code_challenge_method: string };
+  }>('/auth/oauth/pkce-init');
+  return data.data;
+}
+
+/**
+ * Step 2: After the user completes the provider's auth flow, send the
+ * authorization code + state to the backend for server-side token exchange.
+ * Client secrets are NEVER in the app.
+ */
+export async function loginWithOAuth(
+  provider: OAuthProvider,
+  code: string,
+  state: string,
+  name?: string, // Apple sends name only on first login
+): Promise<OAuthSession> {
+  try {
+    const { data } = await authClient.post<{
+      success: boolean;
+      data: { user: AuthSession['user']; token: string; refreshToken: string; expiresIn: number };
+    }>(`/auth/oauth/${provider}`, { code, state, name });
+
+    await storeSecureTokens({ token: data.data.token, refreshToken: data.data.refreshToken });
+
+    return {
+      user: data.data.user,
+      token: data.data.token,
+      refreshToken: data.data.refreshToken,
+      expiresIn: data.data.expiresIn,
+    };
+  } catch (err) {
+    logError(err as Error, { service: 'authService', action: 'oauth_login', provider });
+    if (axios.isAxiosError(err)) {
+      const msg = (err as AxiosLikeError).response?.data?.error?.message;
+      throw new AuthError(msg ?? `${provider} login failed`, 'OAUTH_FAILED');
+    }
+    throw new AuthError(`${provider} login failed`, 'OAUTH_FAILED');
+  }
+}
+
+/** Refresh an OAuth access token using the stored refresh token. */
+export async function refreshOAuthToken(): Promise<string> {
+  const storedRefresh = await getSecureRefreshToken();
+  if (!storedRefresh) throw new AuthError('No refresh token', 'NO_REFRESH_TOKEN');
+
+  try {
+    const { data } = await authClient.post<{
+      success: boolean;
+      data: { token: string; refreshToken: string; expiresIn: number };
+    }>('/auth/oauth/refresh', { refreshToken: storedRefresh });
+
+    await storeSecureTokens({ token: data.data.token, refreshToken: data.data.refreshToken });
+    return data.data.token;
+  } catch (err) {
+    await clearSecureTokens();
+    logError(err as Error, { service: 'authService', action: 'oauth_refresh' });
+    throw new AuthError('Token refresh failed', 'REFRESH_FAILED');
+  }
+}
+
+/** Revoke the current refresh token (logout). */
+export async function revokeOAuthToken(): Promise<void> {
+  const storedRefresh = await getSecureRefreshToken();
+  if (!storedRefresh) return;
+  try {
+    const token = await getSecureToken();
+    await authClient.post(
+      '/auth/oauth/revoke',
+      { refreshToken: storedRefresh },
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+  } catch {
+    // Best-effort — always clear local tokens
+  } finally {
+    await clearSecureTokens();
+  }
+}
+
+/** Get linked OAuth providers for the current user. */
+export async function getLinkedProviders(): Promise<
+  { provider: OAuthProvider; linkedAt: string }[]
+> {
+  const token = await getSecureToken();
+  const { data } = await authClient.get<{
+    success: boolean;
+    data: { linked: { provider: OAuthProvider; linkedAt: string }[] };
+  }>('/auth/oauth/providers', { headers: { Authorization: `Bearer ${token}` } });
+  return data.data.linked;
+}
+
+/** Link an additional OAuth provider to the current account. */
+export async function linkOAuthProvider(
+  provider: OAuthProvider,
+  code: string,
+  state: string,
+): Promise<void> {
+  const token = await getSecureToken();
+  await authClient.post(
+    '/auth/oauth/link',
+    { provider, code, state },
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+}
+
+/** Unlink an OAuth provider from the current account. */
+export async function unlinkOAuthProvider(provider: OAuthProvider): Promise<void> {
+  const token = await getSecureToken();
+  await authClient.delete(`/auth/oauth/unlink/${provider}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
