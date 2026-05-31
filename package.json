@@ -84,11 +84,8 @@
       "^react-native-keychain$": "<rootDir>/src/__mocks__/react-native-keychain.ts",
       "^react-native-image-picker$": "<rootDir>/src/__mocks__/react-native-image-picker.ts",
       "^expo-constants$": "<rootDir>/src/__mocks__/expo-constants.ts",
-      "^@stellar/stellar-sdk$": "<rootDir>/src/__mocks__/stellar-sdk.ts"
+      "^@stellar/stellar-sdk$": "<rootDir>/src/__mocks__/stellar-sdk.ts",
       "^@sentry/react-native$": "<rootDir>/src/__mocks__/@sentry/react-native.ts",
-      "^react-native$": "<rootDir>/src/__mocks__/react-native.ts",
-      "^react-native-keychain$": "<rootDir>/src/__mocks__/react-native-keychain.ts",
-      "^react-native-image-picker$": "<rootDir>/src/__mocks__/react-native-image-picker.ts",
       "^react-native-image-resizer$": "<rootDir>/src/__mocks__/react-native-image-resizer.ts",
       "^@react-native-community/netinfo$": "<rootDir>/src/__mocks__/@react-native-community/netinfo.ts",
       "^expo-constants$": "<rootDir>/src/__mocks__/expo-constants.ts",
