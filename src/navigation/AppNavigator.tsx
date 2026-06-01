@@ -28,6 +28,7 @@ import PetHealthMetricsScreen from '../screens/PetHealthMetricsScreen';
 import PetListScreen from '../screens/PetListScreen';
 import PetShareScreen from '../screens/PetShareScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import TrustlineScreen from '../screens/TrustlineScreen';
 import QRScannerScreen from '../screens/QRScannerScreen';
 import analyticsService from '../services/analyticsService';
 
@@ -122,6 +123,9 @@ function PetNavigator() {
       </PetStack.Screen>
       <PetStack.Screen name="NearbyVet" options={{ title: 'Nearby Vet Clinics' }}>
         {({ navigation }) => <NearbyVetScreen onBack={() => navigation.goBack()} />}
+      </PetStack.Screen>
+      <PetStack.Screen name="TrustlineManager" options={{ title: 'Stellar Trustlines' }}>
+        {({ navigation }) => <TrustlineScreen onBack={() => navigation.goBack()} />}
       </PetStack.Screen>
       <PetStack.Screen
         name="NotificationPreferences"

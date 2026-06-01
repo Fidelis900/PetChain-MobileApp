@@ -37,6 +37,7 @@ export type PetStackParamList = {
   MedicalRecordViewer: { petId: string; petName?: string };
   PetShare: { petId: string; petName: string };
   DosageCalculator: { petId?: string; species?: string; weightKg?: number };
+  TrustlineManager: undefined;
   NearbyVet: undefined;
   VetDirectory: undefined;
   PrivacyDashboard: undefined;
