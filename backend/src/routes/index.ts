@@ -2,6 +2,7 @@ import express from 'express';
 
 import importRouter from './import';
 import petsRouterV2 from './v2/pets';
+import lostFoundRouter from './lostFound';
 import { deprecationHeaders } from '../../middleware/deprecation';
 import analyticsRouter from '../../server/routes/analytics';
 import appointmentsRouter from '../../server/routes/appointments';

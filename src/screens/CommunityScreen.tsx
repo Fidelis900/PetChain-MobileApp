@@ -123,6 +123,9 @@ const CommunityScreen: React.FC = () => {
       <TouchableOpacity style={styles.forumNavBtn} onPress={() => navigation.navigate('Forum')}>
         <Text style={styles.forumNavText}>Go to verified Forum</Text>
       </TouchableOpacity>
+      <TouchableOpacity style={styles.forumNavBtn} onPress={() => navigation.navigate('LostFound')}>
+        <Text style={styles.forumNavText}>Open Lost & Found Network</Text>
+      </TouchableOpacity>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}

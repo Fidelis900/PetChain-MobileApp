@@ -17,6 +17,7 @@ import AuthNavigator from '../screens/AuthNavigator';
 import CommunityScreen from '../screens/CommunityScreen';
 import DeleteAccountScreen from '../screens/DeleteAccountScreen';
 import EmergencyContactsScreen from '../screens/EmergencyContactsScreen';
+import LostFoundScreen from '../screens/LostFoundScreen';
 import ManualEntryScreen from '../screens/ManualEntryScreen';
 import MedicalRecordSearchScreen from '../screens/MedicalRecordSearchScreen';
 import MedicalRecordViewerScreen from '../screens/MedicalRecordViewerScreen';
@@ -432,13 +433,23 @@ export default function AppNavigator() {
             component={ForumScreen}
             options={{ headerShown: true, title: 'Forum' }}
           />
+          <RootStack.Screen
+            name="LostFound"
+            component={LostFoundScreen}
+            options={{ headerShown: true, title: 'Lost & Found' }}
+          />
 
           {/* Modals */}
           <RootStack.Group screenOptions={{ presentation: 'modal' }}>
             <RootStack.Screen name="QRScanner">
-              {({ navigation }) => (
+              {({ route, navigation }) => (
                 <QRScannerScreen
-                  onScanSuccess={() => navigation.goBack()}
+                  onScanSuccess={(data) => {
+                    if (route.params?.onScanSuccess) {
+                      route.params.onScanSuccess(data);
+                    }
+                    navigation.goBack();
+                  }}
                   onClose={() => navigation.goBack()}
                   onManualEntry={() => navigation.replace('ManualEntry')}
                 />

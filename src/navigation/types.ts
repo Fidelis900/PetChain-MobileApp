@@ -10,8 +10,9 @@ export type RootStackParamList = {
   Auth: undefined;
   Main: undefined;
   Forum: undefined;
+  LostFound: undefined;
   // Modals
-  QRScanner: undefined;
+  QRScanner: { onScanSuccess?: (data: string) => void };
   ManualEntry: undefined;
   // Future: Payment / Subscription
   Payment: { planId?: string };
