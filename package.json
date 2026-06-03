@@ -127,6 +127,7 @@
     "react-native-keychain": "^10.0.0",
     "react-native-ssl-pinning": "^1.5.3",
     "react-native-webrtc": "^124.0.3",
+    "soroban-client": "^1.0.1",
     "swagger-ui-express": "^5.0.1",
     "winston": "^3.17.0",
     "winston-daily-rotate-file": "^5.0.0",
