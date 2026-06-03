@@ -36,6 +36,10 @@ async function getSecret(): Promise<string | null> {
   }
 }
 
+export async function getStoredSecret(): Promise<string | null> {
+  return getSecret();
+}
+
 export async function getPublicKeyFromStoredSecret(): Promise<string | null> {
   const secret = await getSecret();
   if (!secret) return null;
