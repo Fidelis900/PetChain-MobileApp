@@ -47,6 +47,7 @@ import adminRouter from '../src/routes/admin';
 import supportRouter from './routes/support';
 import { attachAudit } from '../middleware/auditLog';
 import anchorRouter from '../src/routes/anchor';
+import notesRouter from '../src/routes/notes';
 import apiKeysRouter from '../src/routes/apiKeys';
 import documentsRouter from '../src/routes/documents';
 import notificationsRouter from '../src/routes/notifications';
@@ -148,6 +149,7 @@ export function createApp(): Express {
   api.use('/auth', authRateLimiter, oauthRouter);
   api.use('/analytics', dataRateLimiter, analyticsRouter);
   api.use('/anchor', anchorRouter);
+  api.use('/notes', dataRateLimiter, notesRouter);
   api.use('/backups', dataRateLimiter, backupsRouter);
   api.use('/family-sharing', familySharingRouter);
   api.use('/federation', federationRouter);
