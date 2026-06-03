@@ -54,6 +54,7 @@ const config = {
     sessionTimeoutMs: Number(env('SESSION_TIMEOUT_MS', String(30 * 60 * 1000))),
     /** Crash-free rate threshold — alert fires when rate drops below this */
     crashFreeThreshold: Number(env('CRASH_FREE_THRESHOLD', '99.5')),
+  },
   sentry: {
     dsn: env('SENTRY_DSN', ''),
     enableInDev: env('SENTRY_ENABLE_IN_DEV', 'false') === 'true',

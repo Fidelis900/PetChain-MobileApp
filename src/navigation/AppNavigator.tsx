@@ -27,6 +27,7 @@ import NotificationCenterScreen from '../screens/NotificationCenterScreen';
 import NotificationPreferencesScreen from '../screens/NotificationPreferencesScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import PaymentScreen from '../screens/PaymentScreen';
+import AdoptionScreen from '../screens/AdoptionScreen';
 import PetDetailScreen from '../screens/PetDetailScreen';
 import PetFormScreen from '../screens/PetFormScreen';
 import PetHealthDashboardScreen from '../screens/PetHealthDashboardScreen';
@@ -61,8 +62,12 @@ function PetNavigator() {
           <PetListScreen
             onSelectPet={(pet) => navigation.navigate('PetDetail', { petId: pet.id })}
             onAddPet={() => navigation.navigate('PetForm', {})}
+            onAdoptPet={() => navigation.navigate('Adoption')}
           />
         )}
+      </PetStack.Screen>
+      <PetStack.Screen name="Adoption" options={{ title: 'Adopt a Pet' }}>
+        {() => <AdoptionScreen />}
       </PetStack.Screen>
       <PetStack.Screen name="PetDetail" options={{ title: 'Pet Details' }}>
         {({ route, navigation }) => (
@@ -369,7 +374,9 @@ export default function AppNavigator() {
   }, []);
 
   const navTheme = useNavigationTheme();
-  const currentScreenSpan = React.useRef<ReturnType<typeof performance.startSpan> | undefined>();
+  const currentScreenSpan = React.useRef<ReturnType<typeof performance.startSpan> | undefined>(
+    undefined,
+  );
 
   // Listen for notification responses (taps) with deep linking
   React.useEffect(() => {

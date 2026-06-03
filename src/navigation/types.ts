@@ -37,6 +37,7 @@ export type MainTabParamList = {
 // ─── Pet Stack (nested inside PetList tab) ────────────────────────────────────
 export type PetStackParamList = {
   PetListScreen: undefined;
+  Adoption: undefined;
   PetDetail: { petId: string };
   AuditHistory: {
     entityType: 'pet' | 'medication' | 'appointment';

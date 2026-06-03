@@ -23,9 +23,10 @@ import { useRetry } from '../utils/useRetry';
 interface Props {
   onSelectPet: (pet: Pet) => void;
   onAddPet: () => void;
+  onAdoptPet: () => void;
 }
 
-const PetListScreen: React.FC<Props> = ({ onSelectPet, onAddPet }) => {
+const PetListScreen: React.FC<Props> = ({ onSelectPet, onAddPet, onAdoptPet }) => {
   const [pets, setPets] = useState<Pet[]>([]);
   const offlineStatus = useOfflineStatus();
   const { refreshPets } = usePetContext();
@@ -138,6 +139,15 @@ const PetListScreen: React.FC<Props> = ({ onSelectPet, onAddPet }) => {
         >
           <Text style={styles.addBtnText}>+ Add</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.adoptBtn}
+          onPress={onAdoptPet}
+          accessibilityRole="button"
+          accessibilityLabel="Adopt pet"
+          accessibilityHint="Browse shelter pets"
+        >
+          <Text style={styles.adoptBtnText}>Adopt</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Pet selector bar — Issue #151/#82 */}
@@ -223,6 +233,14 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   addBtnText: { color: '#fff', fontWeight: '600' },
+  adoptBtn: {
+    marginLeft: 10,
+    backgroundColor: '#12372a',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  adoptBtnText: { color: '#fff', fontWeight: '600' },
   loader: { marginTop: 40 },
   list: { padding: 12 },
   cachedBanner: {

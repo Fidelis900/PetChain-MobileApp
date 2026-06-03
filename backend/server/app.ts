@@ -36,6 +36,7 @@ import referralsRouter from './routes/referrals';
 import reportsRouter from './routes/reports';
 import searchRouter from './routes/search';
 import syncRouter from './routes/sync';
+import shelterRouter from '../src/routes/shelter';
 import telemedicineRouter from './routes/telemedicine';
 import travelCertificatesRouter from './routes/travelCertificates';
 import usersRouter from './routes/users';
@@ -180,6 +181,7 @@ export function createApp(): Express {
   api.use('/insurance', dataRateLimiter, insuranceRouter);
   api.use('/health-alerts', dataRateLimiter, healthAlertsRouter);
   api.use('/search', dataRateLimiter, searchRouter);
+  api.use('/shelter', shelterRouter);
   api.use('/vitals', vitalsRouter);
   api.use('/app', appRouter);
   api.use('/api-keys', apiKeysRouter);
