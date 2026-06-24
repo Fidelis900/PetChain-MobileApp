@@ -1,4 +1,12 @@
-import { Asset, Keypair, Memo, Networks, Operation, Server, TransactionBuilder } from '@stellar/stellar-sdk';
+import {
+  Asset,
+  Horizon,
+  Keypair,
+  Memo,
+  Networks,
+  Operation,
+  TransactionBuilder,
+} from '@stellar/stellar-sdk';
 
 const HORIZON_URL = process.env.STELLAR_HORIZON_URL || 'https://horizon-testnet.stellar.org';
 const NETWORK_PASSPHRASE =
@@ -7,7 +15,7 @@ const RECEIVING_SECRET = process.env.STELLAR_RECEIVING_SECRET || '';
 const PREMIUM_PRICE_XLM = parseFloat(process.env.PREMIUM_PRICE_XLM || '10');
 const OVERPAYMENT_TOLERANCE = 0.001;
 
-const server = new Server(HORIZON_URL);
+const server = new Horizon.Server(HORIZON_URL);
 
 export interface PaymentIntent {
   transactionId: string;
@@ -79,11 +87,13 @@ export function streamPayment(
           onResult({ status, amountReceived: received, txHash: payment.transaction_hash });
           close();
         } catch (error) {
-          onError?.(error instanceof Error ? error : new Error('Failed to process Stellar payment'));
+          onError?.(
+            error instanceof Error ? error : new Error('Failed to process Stellar payment'),
+          );
         }
       },
-      onerror: (error: Error) => {
-        onError?.(error);
+      onerror: (error: MessageEvent) => {
+        onError?.(new Error(String(error?.data ?? 'Stellar stream error')));
       },
     });
 

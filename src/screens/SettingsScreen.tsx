@@ -58,6 +58,7 @@ interface ChangePasswordModalProps {
 
 const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ visible, email, onClose }) => {
   const { t } = useTranslation();
+  const colors = useAppTheme();
   const [loading, setLoading] = useState(false);
 
   const handleSend = async () => {
@@ -83,11 +84,15 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ visible, emai
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <Text style={styles.modalTitle}>{t('changePassword.title')}</Text>
-          <Text style={styles.modalBody}>{t('changePassword.body')}</Text>
-          <Text style={styles.modalEmail}>{email}</Text>
+      <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
+        <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.modalTitle, { color: colors.text }]}>
+            {t('changePassword.title')}
+          </Text>
+          <Text style={[styles.modalBody, { color: colors.secondaryText }]}>
+            {t('changePassword.body')}
+          </Text>
+          <Text style={[styles.modalEmail, { color: colors.text }]}>{email}</Text>
 
           <TouchableOpacity
             style={[styles.btn, loading && styles.btnDisabled]}
@@ -102,7 +107,9 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ visible, emai
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
-            <Text style={styles.cancelText}>{t('common.cancel')}</Text>
+            <Text style={[styles.cancelText, { color: colors.secondaryText }]}>
+              {t('common.cancel')}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -148,6 +155,7 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
 
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [exportRequesting, setExportRequesting] = useState(false);
 
   // ── Load profile on mount ──────────────────────────────────────────────────
 
@@ -286,6 +294,57 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
     [t],
   );
 
+  // ── Data Export ────────────────────────────────────────────────────────────
+
+  const handleRequestDataExport = useCallback(async () => {
+    Alert.alert(
+      t('settings.exportDataTitle', 'Export Your Data'),
+      t(
+        'settings.exportDataMessage',
+        'We will prepare a complete export of all your PetChain data (pets, records, appointments, medications) in JSON and PDF formats. You will receive an email with a download link when ready (expires in 48 hours).',
+      ),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('settings.requestExport', 'Request Export'),
+          onPress: async () => {
+            setExportRequesting(true);
+            try {
+              const response = await fetch('/api/privacy/export', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+              });
+
+              if (!response.ok) {
+                throw new Error('Export request failed');
+              }
+
+              const result = await response.json();
+
+              Alert.alert(
+                t('common.success', 'Success'),
+                result.data?.message ||
+                  t(
+                    'settings.exportRequested',
+                    'Your data export has been queued. You will receive an email when ready.',
+                  ),
+              );
+            } catch (err) {
+              Alert.alert(
+                t('common.error'),
+                err instanceof Error
+                  ? err.message
+                  : t('settings.exportFailed', 'Export request failed'),
+              );
+            } finally {
+              setExportRequesting(false);
+            }
+          },
+        },
+      ],
+    );
+  }, [t]);
+
   // ── Logout ─────────────────────────────────────────────────────────────────
 
   const handleLogout = useCallback(() => {
@@ -318,6 +377,13 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
     <View style={[styles.separator, { backgroundColor: colors.border }]} />
   );
 
+  const cardStyle = [styles.card, { backgroundColor: colors.surface, borderColor: colors.border }];
+  const inputStyle = [
+    styles.input,
+    { backgroundColor: colors.input, borderColor: colors.border, color: colors.text },
+  ];
+  const placeholderColor = colors.placeholder;
+
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
@@ -329,126 +395,134 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
 
       {/* ── Profile Settings ── */}
       <SectionHeader title={t('settings.profile')} />
-      <View style={styles.card}>
-        <Text style={styles.label}>{t('settings.name')} *</Text>
+      <View style={cardStyle}>
+        <Text style={[styles.label, { color: colors.secondaryText }]}>{t('settings.name')} *</Text>
         <TextInput
-          style={styles.input}
+          style={inputStyle}
           value={name}
           onChangeText={setName}
           placeholder={t('settings.namePlaceholder')}
-          placeholderTextColor="#aaa"
+          placeholderTextColor={placeholderColor}
           autoCapitalize="words"
         />
 
-        <Text style={styles.label}>{t('settings.email')}</Text>
+        <Text style={[styles.label, { color: colors.secondaryText }]}>{t('settings.email')}</Text>
         <TextInput
-          style={styles.input}
+          style={inputStyle}
           value={email}
           onChangeText={setEmail}
           placeholder={t('settings.emailPlaceholder')}
-          placeholderTextColor="#aaa"
+          placeholderTextColor={placeholderColor}
           keyboardType="email-address"
           autoCapitalize="none"
         />
 
-        <Text style={styles.label}>{t('settings.phone')}</Text>
+        <Text style={[styles.label, { color: colors.secondaryText }]}>{t('settings.phone')}</Text>
         <TextInput
-          style={styles.input}
+          style={inputStyle}
           value={phone}
           onChangeText={setPhone}
           placeholder={t('settings.phonePlaceholder')}
-          placeholderTextColor="#aaa"
+          placeholderTextColor={placeholderColor}
           keyboardType="phone-pad"
         />
 
-        <Text style={styles.label}>{t('settings.profilePhoto')}</Text>
+        <Text style={[styles.label, { color: colors.secondaryText }]}>
+          {t('settings.profilePhoto')}
+        </Text>
         <TextInput
-          style={styles.input}
+          style={inputStyle}
           value={profilePhoto}
           onChangeText={setProfilePhoto}
           placeholder={t('settings.profilePhotoPlaceholder')}
-          placeholderTextColor="#aaa"
+          placeholderTextColor={placeholderColor}
           autoCapitalize="none"
         />
 
-        <Text style={styles.label}>{t('settings.address')}</Text>
+        <Text style={[styles.label, { color: colors.secondaryText }]}>{t('settings.address')}</Text>
         <TextInput
-          style={styles.input}
+          style={inputStyle}
           value={street}
           onChangeText={setStreet}
           placeholder={t('settings.streetPlaceholder')}
-          placeholderTextColor="#aaa"
+          placeholderTextColor={placeholderColor}
         />
         <TextInput
-          style={styles.input}
+          style={inputStyle}
           value={city}
           onChangeText={setCity}
           placeholder={t('settings.cityPlaceholder')}
-          placeholderTextColor="#aaa"
+          placeholderTextColor={placeholderColor}
         />
         <TextInput
-          style={styles.input}
+          style={inputStyle}
           value={state}
           onChangeText={setState}
           placeholder={t('settings.statePlaceholder')}
-          placeholderTextColor="#aaa"
+          placeholderTextColor={placeholderColor}
         />
         <TextInput
-          style={styles.input}
+          style={inputStyle}
           value={postalCode}
           onChangeText={setPostalCode}
           placeholder={t('settings.postalCodePlaceholder')}
-          placeholderTextColor="#aaa"
+          placeholderTextColor={placeholderColor}
         />
         <TextInput
-          style={styles.input}
+          style={inputStyle}
           value={country}
           onChangeText={setCountry}
           placeholder={t('settings.countryPlaceholder')}
-          placeholderTextColor="#aaa"
+          placeholderTextColor={placeholderColor}
         />
         {formatAddress({ street, city, state, postalCode, country }) ? (
-          <Text style={styles.helperText}>
+          <Text style={[styles.helperText, { color: colors.primary }]}>
             {formatAddress({ street, city, state, postalCode, country })}
           </Text>
         ) : null}
 
-        <Text style={styles.label}>{t('settings.emergencyContact')}</Text>
+        <Text style={[styles.label, { color: colors.secondaryText }]}>
+          {t('settings.emergencyContact')}
+        </Text>
         <TextInput
-          style={styles.input}
+          style={inputStyle}
           value={contactName}
           onChangeText={setContactName}
           placeholder={t('settings.contactNamePlaceholder')}
-          placeholderTextColor="#aaa"
+          placeholderTextColor={placeholderColor}
           autoCapitalize="words"
         />
         <TextInput
-          style={styles.input}
+          style={inputStyle}
           value={contactPhone}
           onChangeText={setContactPhone}
           placeholder={t('settings.contactPhonePlaceholder')}
-          placeholderTextColor="#aaa"
+          placeholderTextColor={placeholderColor}
           keyboardType="phone-pad"
         />
         <TextInput
-          style={styles.input}
+          style={inputStyle}
           value={contactRelationship}
           onChangeText={setContactRelationship}
           placeholder={t('settings.contactRelationshipPlaceholder')}
-          placeholderTextColor="#aaa"
+          placeholderTextColor={placeholderColor}
           autoCapitalize="words"
         />
         <TextInput
-          style={styles.input}
+          style={inputStyle}
           value={contactEmail}
           onChangeText={setContactEmail}
           placeholder={t('settings.contactEmailPlaceholder')}
-          placeholderTextColor="#aaa"
+          placeholderTextColor={placeholderColor}
           keyboardType="email-address"
           autoCapitalize="none"
         />
 
-        {profileSaved && <Text style={styles.successText}>{t('settings.profileSaved')}</Text>}
+        {profileSaved && (
+          <Text style={[styles.successText, { color: colors.success }]}>
+            {t('settings.profileSaved')}
+          </Text>
+        )}
 
         <TouchableOpacity
           style={[styles.btn, profileSaving && styles.btnDisabled]}
@@ -465,9 +539,9 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
 
       {/* ── Notification Preferences ── */}
       <SectionHeader title={t('settings.notifications')} />
-      <View style={styles.card}>
+      <View style={cardStyle}>
         {notifSaving && (
-          <ActivityIndicator size="small" color="#4CAF50" style={styles.notifLoader} />
+          <ActivityIndicator size="small" color={colors.primary} style={styles.notifLoader} />
         )}
 
         {(
@@ -497,7 +571,7 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
 
       {/* ── Security Settings ── */}
       <SectionHeader title={t('settings.security')} />
-      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={cardStyle}>
         <TouchableOpacity style={styles.row} onPress={() => setShowChangePassword(true)}>
           <Text style={[styles.rowLabel, { color: colors.text }]}>
             {t('settings.changePassword')}
@@ -529,7 +603,7 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
 
       {/* ── Theme ── */}
       <SectionHeader title={t('settings.theme', 'Theme')} />
-      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={cardStyle}>
         {(['system', 'light', 'dark'] as ThemeMode[]).map((option, idx, arr) => (
           <React.Fragment key={option}>
             <TouchableOpacity
@@ -554,8 +628,26 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
 
       {/* ── Language ── */}
       <SectionHeader title={t('settings.language')} />
-      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={cardStyle}>
         <LanguageSelector />
+      </View>
+
+      {/* ── Privacy & Data ── */}
+      <SectionHeader title={t('settings.privacyData', 'Privacy & Data')} />
+      <View style={cardStyle}>
+        <TouchableOpacity style={styles.row} onPress={() => void handleRequestDataExport()}>
+          <Text style={[styles.rowLabel, { color: colors.text }]}>
+            {t('settings.exportData', 'Export My Data')}
+          </Text>
+          <Text style={[styles.chevron, { color: colors.placeholder }]}>›</Text>
+        </TouchableOpacity>
+        <RowSeparator />
+        <TouchableOpacity style={styles.row} onPress={() => void Linking.openURL(PRIVACY_URL)}>
+          <Text style={[styles.rowLabel, { color: colors.text }]}>
+            {t('settings.privacyPolicy')}
+          </Text>
+          <Text style={[styles.chevron, { color: colors.placeholder }]}>›</Text>
+        </TouchableOpacity>
       </View>
 
       {/* ── App Information ── */}
@@ -567,20 +659,13 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
         </View>
         <RowSeparator />
         <View style={styles.row}>
-          <Text style={styles.rowLabel}>{t('settings.build')}</Text>
-          <Text style={styles.rowValue}>{BUILD_NUMBER}</Text>
+          <Text style={[styles.rowLabel, { color: colors.text }]}>{t('settings.build')}</Text>
+          <Text style={[styles.rowValue, { color: colors.secondaryText }]}>{BUILD_NUMBER}</Text>
         </View>
         <RowSeparator />
         <TouchableOpacity style={styles.row} onPress={() => void Linking.openURL(TERMS_URL)}>
           <Text style={[styles.rowLabel, { color: colors.text }]}>
             {t('settings.termsOfService')}
-          </Text>
-          <Text style={[styles.chevron, { color: colors.placeholder }]}>›</Text>
-        </TouchableOpacity>
-        <RowSeparator />
-        <TouchableOpacity style={styles.row} onPress={() => void Linking.openURL(PRIVACY_URL)}>
-          <Text style={[styles.rowLabel, { color: colors.text }]}>
-            {t('settings.privacyPolicy')}
           </Text>
           <Text style={[styles.chevron, { color: colors.placeholder }]}>›</Text>
         </TouchableOpacity>
@@ -612,7 +697,7 @@ const SettingsScreen: React.FC<Props> = ({ onLogout }) => {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  container: { flex: 1 },
   content: { padding: 16, paddingBottom: 40 },
   screenTitle: {
     fontSize: 28,
@@ -622,7 +707,6 @@ const styles = StyleSheet.create({
   sectionHeader: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#888',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     marginTop: 24,
@@ -630,7 +714,6 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   card: {
-    backgroundColor: '#fff',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -647,23 +730,18 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   input: {
-    backgroundColor: '#f9f9f9',
     borderWidth: 1,
-    borderColor: '#e0e0e0',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
-    color: '#1a1a1a',
   },
   successText: {
-    color: '#4CAF50',
     fontSize: 13,
     marginTop: 8,
     marginBottom: 4,
   },
   helperText: {
-    color: '#4CAF50',
     fontSize: 12,
     marginTop: 4,
     marginBottom: 4,
@@ -703,11 +781,9 @@ const styles = StyleSheet.create({
   // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'flex-end',
   },
   modalCard: {
-    backgroundColor: '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 24,
@@ -717,7 +793,7 @@ const styles = StyleSheet.create({
   modalBody: { fontSize: 15, marginBottom: 6 },
   modalEmail: { fontSize: 15, fontWeight: '600', marginBottom: 20 },
   cancelBtn: { paddingVertical: 12, alignItems: 'center', marginTop: 8 },
-  cancelText: { color: '#888', fontSize: 15 },
+  cancelText: { fontSize: 15 },
 });
 
 export default SettingsScreen;

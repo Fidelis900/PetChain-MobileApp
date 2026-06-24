@@ -11,6 +11,7 @@ export interface DBUser {
   is_email_verified: boolean;
   last_login_at?: Date;
   password_hash?: string;
+  stellar_public_key?: string;
   created_at: Date;
   updated_at: Date;
 }

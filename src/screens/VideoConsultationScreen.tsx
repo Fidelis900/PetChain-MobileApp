@@ -25,7 +25,7 @@ import {
   View,
 } from 'react-native';
 import {
-  MediaStream,
+  type MediaStream,
   RTCIceCandidate,
   RTCPeerConnection,
   RTCSessionDescription,
@@ -51,13 +51,7 @@ interface Props {
 }
 
 type NetworkQuality = 'good' | 'fair' | 'poor';
-type CallState =
-  | 'idle'
-  | 'connecting'
-  | 'waiting_room'
-  | 'in_call'
-  | 'screen_sharing'
-  | 'ended';
+type CallState = 'idle' | 'connecting' | 'waiting_room' | 'in_call' | 'screen_sharing' | 'ended';
 
 interface IceServer {
   urls: string | string[];
@@ -105,8 +99,13 @@ const VideoConsultationScreen: React.FC<Props> = ({
     qualityTimerRef.current = setInterval(() => {
       void pc.getStats().then((stats) => {
         stats.forEach((report) => {
-          if (report.type === 'candidate-pair' && (report as Record<string, unknown>).state === 'succeeded') {
-            const rtt = (report as Record<string, unknown>).currentRoundTripTime as number | undefined;
+          if (
+            report.type === 'candidate-pair' &&
+            (report as Record<string, unknown>).state === 'succeeded'
+          ) {
+            const rtt = (report as Record<string, unknown>).currentRoundTripTime as
+              | number
+              | undefined;
             if (rtt != null) {
               const rttMs = rtt * 1000;
               if (rttMs < QUALITY_THRESHOLDS.good) setNetworkQuality('good');
@@ -141,14 +140,18 @@ const VideoConsultationScreen: React.FC<Props> = ({
   // ---- Build RTCPeerConnection -------------------------------------------
   const buildPeerConnection = useCallback(
     (iceServers: IceServer[], stream: MediaStream): RTCPeerConnection => {
-      const pc = new RTCPeerConnection({ iceServers });
+      const pc = new RTCPeerConnection({ iceServers }) as RTCPeerConnection & {
+        ontrack: ((event: RTCTrackEvent) => void) | null;
+        onicecandidate: ((event: RTCPeerConnectionIceEvent) => void) | null;
+        onconnectionstatechange: (() => void) | null;
+      };
 
       // Add local tracks
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
       // Remote stream
       pc.ontrack = (event) => {
-        setRemoteStream(event.streams[0] ?? null);
+        setRemoteStream((event.streams[0] ?? null) as any);
       };
 
       // ICE candidate relay
@@ -205,7 +208,9 @@ const VideoConsultationScreen: React.FC<Props> = ({
 
       socket.on('offer', async ({ sdp }: { sdp: RTCSessionDescriptionInit }) => {
         try {
-          await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+          await pc.setRemoteDescription(
+            new RTCSessionDescription({ type: sdp.type!, sdp: sdp.sdp ?? '' }),
+          );
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(new RTCSessionDescription(answer));
           socket.emit('answer', { consultationId, sdp: answer });
@@ -219,7 +224,9 @@ const VideoConsultationScreen: React.FC<Props> = ({
 
       socket.on('answer', async ({ sdp }: { sdp: RTCSessionDescriptionInit }) => {
         try {
-          await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+          await pc.setRemoteDescription(
+            new RTCSessionDescription({ type: sdp.type!, sdp: sdp.sdp ?? '' }),
+          );
         } catch (err) {
           logError(err instanceof Error ? err : new Error(String(err)), {
             screen: 'VideoConsultationScreen',
@@ -254,15 +261,7 @@ const VideoConsultationScreen: React.FC<Props> = ({
       // Emit join event
       socket.emit('join_room', { consultationId, roomToken, userId, role: userRole });
     },
-    [
-      consultationId,
-      roomToken,
-      userId,
-      userRole,
-      startLocalMedia,
-      buildPeerConnection,
-      onEnd,
-    ],
+    [consultationId, roomToken, userId, userRole, startLocalMedia, buildPeerConnection, onEnd],
   );
 
   // ---- Initialise --------------------------------------------------------
@@ -318,11 +317,9 @@ const VideoConsultationScreen: React.FC<Props> = ({
 
     if (!isSharingScreen) {
       try {
-        const screenStream = await mediaDevices.getDisplayMedia({ video: true });
+        const screenStream = await (mediaDevices as any).getDisplayMedia({ video: true });
         const screenTrack = screenStream.getVideoTracks()[0];
-        const sender = pcRef.current
-          ?.getSenders()
-          .find((s) => s.track?.kind === 'video');
+        const sender = pcRef.current?.getSenders().find((s) => s.track?.kind === 'video');
 
         if (sender && screenTrack) {
           await sender.replaceTrack(screenTrack);
@@ -344,9 +341,7 @@ const VideoConsultationScreen: React.FC<Props> = ({
       // Restore camera track
       const cameraStream = await mediaDevices.getUserMedia({ video: true });
       const cameraTrack = cameraStream.getVideoTracks()[0];
-      const sender = pcRef.current
-        ?.getSenders()
-        .find((s) => s.track?.kind === 'video');
+      const sender = pcRef.current?.getSenders().find((s) => s.track?.kind === 'video');
 
       if (sender && cameraTrack) {
         await sender.replaceTrack(cameraTrack);
@@ -401,10 +396,10 @@ const VideoConsultationScreen: React.FC<Props> = ({
                   setConsentGiven(true);
                   setShowConsentModal(false);
                   // Notify backend of consent
-                  void fetch(
-                    `${config.api.baseUrl}/consultations/${consultationId}/consent`,
-                    { method: 'POST', headers: { 'Content-Type': 'application/json' } },
-                  ).catch(() => null);
+                  void fetch(`${config.api.baseUrl}/consultations/${consultationId}/consent`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                  }).catch(() => null);
                 }}
               >
                 <Text style={styles.consentBtnTextAccept}>I Consent</Text>
@@ -551,7 +546,13 @@ const VideoConsultationScreen: React.FC<Props> = ({
 // ─────────────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111', gap: 12 },
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#111',
+    gap: 12,
+  },
 
   // Connecting
   connectingText: { color: '#fff', fontSize: 15, marginTop: 12 },
@@ -562,13 +563,26 @@ const styles = StyleSheet.create({
   bold: { fontWeight: '700', color: '#fff' },
   waitPosition: { color: '#4A90E2', fontSize: 18, fontWeight: '600' },
   waitEst: { color: '#aaa', fontSize: 14 },
-  leaveBtn: { marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: '#e53935' },
+  leaveBtn: {
+    marginTop: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e53935',
+  },
   leaveBtnText: { color: '#e53935', fontWeight: '600' },
 
   // Ended
   endedTitle: { color: '#fff', fontSize: 22, fontWeight: '700' },
   endedSub: { color: '#aaa', fontSize: 14, textAlign: 'center', paddingHorizontal: 32 },
-  doneBtn: { marginTop: 20, paddingHorizontal: 32, paddingVertical: 12, borderRadius: 10, backgroundColor: '#4A90E2' },
+  doneBtn: {
+    marginTop: 20,
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#4A90E2',
+  },
   doneBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
 
   // Active call
@@ -633,8 +647,20 @@ const styles = StyleSheet.create({
   controlIcon: { fontSize: 22 },
 
   // Consent modal
-  consentOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  consentCard: { backgroundColor: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 400 },
+  consentOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  consentCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+  },
   consentTitle: { fontSize: 20, fontWeight: '700', color: '#1a1a1a', marginBottom: 12 },
   consentBody: { fontSize: 14, color: '#444', lineHeight: 22, marginBottom: 24 },
   consentButtons: { flexDirection: 'row', gap: 12 },

@@ -99,7 +99,10 @@ async function createPaymentIntent(
   const payment: Payment = {
     id: randomUUID(),
     userId: input.userId,
-    amount,
+    amount:
+      input.plan === 'premium_annual'
+        ? SUBSCRIPTION_PLANS[input.plan].priceAnnual
+        : SUBSCRIPTION_PLANS[input.plan].priceMonthly,
     currency: 'USD',
     status: 'pending',
     provider: input.provider,

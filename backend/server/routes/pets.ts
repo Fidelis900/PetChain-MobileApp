@@ -3,8 +3,16 @@ import crypto from 'crypto';
 
 import express from 'express';
 
+import { logAuditTrail } from '../../middleware/auditLogger';
 import { authenticateJWT, type AuthenticatedRequest } from '../../middleware/auth';
+import {
+  petProfileCacheMiddleware,
+  petsByOwnerCacheMiddleware,
+} from '../../middleware/cacheMiddleware';
 import { UserRole } from '../../models/UserRole';
+import { invalidatePet } from '../../services/cacheService';
+import paymentService from '../../services/paymentService';
+import { issuePetAsset, transferPetAsset } from '../../services/stellarAssetService';
 import { petRepository } from '../../src/repositories/petRepository';
 import { type DBPet } from '../../src/repositories/petRepository';
 import { userRepository } from '../../src/repositories/userRepository';
@@ -31,6 +39,7 @@ function emergencyPetView(pet: StoredPet | DBPet) {
     name: pet.name,
     species: pet.species,
     breed: pet.breed,
+    weightKg: 'weight_kg' in pet ? pet.weight_kg : row?.weightKg,
     microchipId: 'microchip_id' in pet ? pet.microchip_id : row?.microchipId,
     photoUrl: 'photo_url' in pet ? pet.photo_url : row?.photoUrl,
     emergencyNotes: [...store.medicalRecords.values()]
@@ -59,6 +68,7 @@ async function toPetResponse(p: StoredPet | DBPet) {
     species: p.species,
     breed: p.breed,
     dateOfBirth: 'date_of_birth' in p ? p.date_of_birth : (p as StoredPet).dateOfBirth,
+    weightKg: 'weight_kg' in p ? p.weight_kg : (p as StoredPet).weightKg,
     microchipId: 'microchip_id' in p ? p.microchip_id : (p as StoredPet).microchipId,
     photoUrl: 'photo_url' in p ? p.photo_url : (p as StoredPet).photoUrl,
     thumbnailUrl: 'thumbnail_url' in p ? p.thumbnail_url : (p as StoredPet).thumbnailUrl,
@@ -134,7 +144,7 @@ router.get('/identity/:token/view', async (req, res) => {
 // All routes below require authentication
 router.use(authenticateJWT);
 
-router.get('/owner/:ownerId', (req: AuthenticatedRequest, res) => {
+router.get('/owner/:ownerId', petsByOwnerCacheMiddleware(), (req: AuthenticatedRequest, res) => {
   // Only admin or the owner themselves can see their pets
   if (req.user!.role !== UserRole.ADMIN && req.user!.id !== req.params.ownerId) {
     return sendError(res, 403, 'FORBIDDEN', 'You do not have permission to view these pets');
@@ -222,7 +232,7 @@ router.get('/:petId/medical-records', (req: AuthenticatedRequest, res) => {
   });
 });
 
-router.get('/', (req: AuthenticatedRequest, res) => {
+router.get('/', petsByOwnerCacheMiddleware(), (req: AuthenticatedRequest, res) => {
   const ownerId = (req.query as Record<string, string | undefined>).ownerId;
 
   // If ownerId is provided, filter. Otherwise, only admin/vet can see all pets.
@@ -239,7 +249,7 @@ router.get('/', (req: AuthenticatedRequest, res) => {
   return res.json(ok(list.map(toPetResponse)));
 });
 
-router.get('/:id', (req: AuthenticatedRequest, res) => {
+router.get('/:id', petProfileCacheMiddleware(), (req: AuthenticatedRequest, res) => {
   const pet = store.pets.get(req.params.id);
   if (!pet) return sendError(res, 404, 'NOT_FOUND', 'Pet not found');
 
@@ -252,8 +262,17 @@ router.get('/:id', (req: AuthenticatedRequest, res) => {
 });
 
 router.post('/', async (req: AuthenticatedRequest, res) => {
-  const { name, species, breed, dateOfBirth, microchipId, photoUrl, thumbnailUrl, ownerId } =
-    req.body as Partial<StoredPet & { thumbnailUrl?: string }>;
+  const {
+    name,
+    species,
+    breed,
+    dateOfBirth,
+    weightKg,
+    microchipId,
+    photoUrl,
+    thumbnailUrl,
+    ownerId,
+  } = req.body as Partial<StoredPet & { thumbnailUrl?: string }>;
   if (!name?.trim() || !species?.trim() || !ownerId?.trim()) {
     return sendError(res, 400, 'VALIDATION_ERROR', 'name, species, and ownerId are required');
   }
@@ -268,6 +287,21 @@ router.post('/', async (req: AuthenticatedRequest, res) => {
     );
   }
 
+  // Enforce free-tier pet limit (1 pet)
+  const activeSub = paymentService.getSubscription(ownerId.trim());
+  const isPremium = activeSub?.status === 'active' && activeSub.plan !== 'free';
+  if (!isPremium && req.user!.role !== UserRole.ADMIN) {
+    const existingPets = [...store.pets.values()].filter((p) => p.ownerId === ownerId.trim());
+    if (existingPets.length >= 1) {
+      return sendError(
+        res,
+        403,
+        'SUBSCRIPTION_REQUIRED',
+        'Free tier allows 1 pet. Upgrade to Premium for unlimited pets.',
+      );
+    }
+  }
+
   if (!store.users.get(ownerId.trim())) {
     return sendError(res, 400, 'VALIDATION_ERROR', 'ownerId must reference an existing user');
   }
@@ -279,16 +313,38 @@ router.post('/', async (req: AuthenticatedRequest, res) => {
     species: species.trim(),
     breed: breed?.trim(),
     date_of_birth: dateOfBirth ? new Date(dateOfBirth) : undefined,
+    weight_kg: typeof weightKg === 'number' ? weightKg : undefined,
     microchip_id: microchipId?.trim(),
     photo_url: photoUrl?.trim(),
     thumbnail_url: thumbnailUrl?.trim(),
     owner_id: ownerId.trim(),
   });
 
+  void logAuditTrail({
+    req,
+    entityType: 'pet',
+    entityId: pet.id,
+    action: 'CREATE',
+    before: null,
+    after: await toPetResponse(pet),
+  });
+
+  await invalidatePet(pet.id, pet.owner_id);
+
+  // Issue Stellar pet identity NFT
+  try {
+    const sourceSeed = process.env.STELLAR_SOURCE_SEED;
+    const issuerSeed = process.env.STELLAR_ISSUER_SEED;
+    if (sourceSeed && issuerSeed) {
+      await issuePetAsset(pet.id, sourceSeed, issuerSeed);
+    }
+  } catch (err) {
+    console.error('[Stellar] Failed to issue pet asset:', err);
+  }
   return res.status(201).json(ok(await toPetResponse(pet), 'Pet created'));
 });
 
-router.put('/:id', (req: AuthenticatedRequest, res) => {
+router.put('/:id', async (req: AuthenticatedRequest, res) => {
   const pet = store.pets.get(req.params.id);
   if (!pet) return sendError(res, 404, 'NOT_FOUND', 'Pet not found');
 
@@ -307,6 +363,7 @@ router.put('/:id', (req: AuthenticatedRequest, res) => {
     ...(body.dateOfBirth !== undefined
       ? { dateOfBirth: body.dateOfBirth ? String(body.dateOfBirth) : undefined }
       : {}),
+    ...(body.weightKg !== undefined ? { weightKg: body.weightKg } : {}),
     ...(body.microchipId !== undefined
       ? { microchipId: body.microchipId ? String(body.microchipId) : undefined }
       : {}),
@@ -329,9 +386,32 @@ router.put('/:id', (req: AuthenticatedRequest, res) => {
   ) {
     const previous = activeQrForPet(pet.id);
     if (previous) store.petQrIdentities.set(previous.token, { ...previous, revokedAt: t });
+
+    // Transfer Stellar pet identity NFT to new owner
+    try {
+      const assetCode = `PET${pet.id.substring(0, 9).toUpperCase()}`;
+      const issuerPublicKey = process.env.STELLAR_ISSUER_PUBLIC_KEY;
+      const currentOwnerSeed = process.env.STELLAR_SOURCE_SEED;
+      const newOwnerUser = await userRepository.findById(body.ownerId);
+      const newOwnerPublicKey = newOwnerUser?.stellar_public_key;
+
+      if (issuerPublicKey && currentOwnerSeed && newOwnerPublicKey) {
+        await transferPetAsset(assetCode, issuerPublicKey, currentOwnerSeed, newOwnerPublicKey);
+      }
+    } catch (err) {
+      console.error('[Stellar] Failed to transfer pet asset:', err);
+    }
   }
   store.pets.set(pet.id, next);
-  return res.json(ok(toPetResponse(next), 'Pet updated'));
+  void logAuditTrail({
+    req,
+    entityType: 'pet',
+    entityId: pet.id,
+    action: 'UPDATE',
+    before: pet,
+    after: next,
+  });
+  return res.json(ok(await toPetResponse(next), 'Pet updated'));
 });
 
 router.delete('/:id', (req: AuthenticatedRequest, res) => {
@@ -347,6 +427,14 @@ router.delete('/:id', (req: AuthenticatedRequest, res) => {
   for (const u of store.users.values()) {
     u.pets = u.pets.filter((p) => p.id !== req.params.id);
   }
+  void logAuditTrail({
+    req,
+    entityType: 'pet',
+    entityId: pet.id,
+    action: 'DELETE',
+    before: pet,
+    after: null,
+  });
   return res.json(ok(null, 'Pet deleted'));
 });
 

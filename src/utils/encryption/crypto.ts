@@ -40,11 +40,13 @@ export const encrypt = async (data: unknown, purpose: string = 'general'): Promi
     throw new EncryptionError('Data to encrypt cannot be null or undefined', 'INVALID_DATA');
   }
 
-  const stringData = typeof data === 'string' ? data : JSON.stringify(data);
+  if (typeof data !== 'string') {
+    throw new EncryptionError('Data to encrypt must be a string', 'INVALID_DATA');
+  }
 
   try {
     const key = await deriveKey(purpose);
-    const encrypted = CryptoJS.AES.encrypt(stringData, key).toString();
+    const encrypted = CryptoJS.AES.encrypt(data, key).toString();
     if (!encrypted) {
       throw new EncryptionError('Encryption produced empty result', 'ENCRYPTION_FAILED');
     }

@@ -73,7 +73,7 @@ module.exports = {
         NODE_ENV: 'development',
         APP_ENV: 'development',
         PORT: 3000,
-        instances: 1,        // single worker is easier to debug
+        instances: 1, // single worker is easier to debug
         exec_mode: 'fork',
       },
     },

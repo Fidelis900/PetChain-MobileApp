@@ -41,7 +41,11 @@ const SearchScreen: React.FC = () => {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const doSearch = useCallback(async (q: string) => {
-    if (!q.trim()) { setResults([]); setTotal(0); return; }
+    if (!q.trim()) {
+      setResults([]);
+      setTotal(0);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -60,8 +64,12 @@ const SearchScreen: React.FC = () => {
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => { void doSearch(query); }, DEBOUNCE_MS);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+    debounceRef.current = setTimeout(() => {
+      void doSearch(query);
+    }, DEBOUNCE_MS);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, [query, doSearch]);
 
   const getTitle = (hit: SearchHit): string => {
@@ -102,7 +110,9 @@ const SearchScreen: React.FC = () => {
       {error && <Text style={styles.error}>{error}</Text>}
 
       {!loading && query.length > 0 && results.length > 0 && (
-        <Text style={styles.resultCount}>{total} result{total !== 1 ? 's' : ''}</Text>
+        <Text style={styles.resultCount}>
+          {total} result{total !== 1 ? 's' : ''}
+        </Text>
       )}
 
       <FlatList
@@ -112,9 +122,7 @@ const SearchScreen: React.FC = () => {
         renderItem={({ item }) => (
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <Text style={styles.indexLabel}>
-                {INDEX_LABELS[item.index] ?? item.index}
-              </Text>
+              <Text style={styles.indexLabel}>{INDEX_LABELS[item.index] ?? item.index}</Text>
               <Text style={styles.score}>{(item.score * 100).toFixed(0)}%</Text>
             </View>
             <Text style={styles.cardTitle}>{getTitle(item)}</Text>

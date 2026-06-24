@@ -69,7 +69,7 @@ describe('SOS Feature Logic', () => {
       const contacts = [
         { id: '1', name: 'Contact 1', phoneNumber: '111', type: 'emergency', available24h: true },
       ];
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
+
       const { getItem } = require('../localDB');
       (getItem as jest.Mock).mockResolvedValue(JSON.stringify(contacts));
 

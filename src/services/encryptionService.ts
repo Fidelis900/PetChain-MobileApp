@@ -51,9 +51,14 @@ export class EncryptionService {
     return JSON.parse(decrypted) as T;
   }
 
-  async rotateKey(secret: string, encryptedRecords: EncryptedPayload[]): Promise<EncryptedPayload[]> {
+  async rotateKey(
+    secret: string,
+    encryptedRecords: EncryptedPayload[],
+  ): Promise<EncryptedPayload[]> {
     const nextVersion = (await this.getCurrentKeyVersion()) + 1;
-    const decrypted = await Promise.all(encryptedRecords.map((record) => this.decryptRecord(record)));
+    const decrypted = await Promise.all(
+      encryptedRecords.map((record) => this.decryptRecord(record)),
+    );
     await this.provisionKey(secret, nextVersion);
     return Promise.all(decrypted.map((record) => this.encryptRecord(record)));
   }
@@ -61,7 +66,10 @@ export class EncryptionService {
   async mergeEncryptedRecords(
     client: EncryptedPayload,
     server: EncryptedPayload,
-    merge: (client: Record<string, unknown>, server: Record<string, unknown>) => Record<string, unknown>,
+    merge: (
+      client: Record<string, unknown>,
+      server: Record<string, unknown>,
+    ) => Record<string, unknown>,
   ): Promise<EncryptedPayload> {
     const clientRecord = await this.decryptRecord<Record<string, unknown>>(client);
     const serverRecord = await this.decryptRecord<Record<string, unknown>>(server);

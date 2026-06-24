@@ -36,7 +36,9 @@ export async function indexDocument(
 }
 
 export async function deleteDocument(index: SearchIndex, id: string): Promise<void> {
-  await client.delete({ index, id }).catch(() => {/* ignore 404 */});
+  await client.delete({ index, id }).catch(() => {
+    /* ignore 404 */
+  });
 }
 
 // ─── Full-text search ─────────────────────────────────────────────────────────
@@ -72,7 +74,7 @@ export async function search(
             },
           },
         ],
-        filter: filterClauses,
+        filter: filterClauses as never,
       },
     },
     highlight: {
@@ -82,13 +84,15 @@ export async function search(
     },
   });
 
-  const hits: SearchHit[] = (response.hits.hits as Array<{
-    _id: string;
-    _index: string;
-    _score: number | null;
-    _source: Record<string, unknown>;
-    highlight?: Record<string, string[]>;
-  }>).map((h) => ({
+  const hits: SearchHit[] = (
+    response.hits.hits as Array<{
+      _id: string;
+      _index: string;
+      _score: number | null;
+      _source: Record<string, unknown>;
+      highlight?: Record<string, string[]>;
+    }>
+  ).map((h) => ({
     id: h._id,
     index: h._index as SearchIndex,
     score: h._score ?? 0,

@@ -1,12 +1,12 @@
 import { Router, type Request, type Response } from 'express';
 
+import { authenticateJWT, type AuthenticatedRequest } from '../../middleware/auth';
 import {
   createPaymentIntent,
   processRefund,
   streamPayment,
   type PaymentIntent,
 } from '../../services/stellarPaymentService';
-import { authenticateJWT, type AuthenticatedRequest } from '../../middleware/auth';
 
 const router = Router();
 
