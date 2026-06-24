@@ -25,7 +25,6 @@ import path from 'path';
 // when it is not available (e.g. in CI without native binaries).
 let sharp: typeof import('sharp') | undefined;
 try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   sharp = require('sharp') as typeof import('sharp');
 } catch {
   console.warn('[cdnService] sharp not installed; thumbnails will not be generated server-side');
@@ -102,10 +101,7 @@ export function verifySignedUrl(key: string, expires: string, sig: string): bool
   if (isNaN(expiry) || Date.now() / 1000 > expiry) return false;
 
   const payload = `${key}:${expiry}`;
-  const expected = crypto
-    .createHmac('sha256', CDN_SIGNING_SECRET)
-    .update(payload)
-    .digest('hex');
+  const expected = crypto.createHmac('sha256', CDN_SIGNING_SECRET).update(payload).digest('hex');
 
   // Constant-time comparison to prevent timing attacks
   return crypto.timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expected, 'hex'));

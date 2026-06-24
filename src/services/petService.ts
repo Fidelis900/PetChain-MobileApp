@@ -4,6 +4,7 @@ import apiClient from './apiClient';
 import { getItem, setItem, removeItem } from './localDB';
 import offlineQueue from './offlineQueue';
 import { scanQRCode, type QRScanResult } from './qrCodeService';
+import type { Species } from '../models/Pet';
 import { logError } from '../utils/errorLogger';
 import { pickImage, compressImage, generateThumbnail, uploadToStorage } from '../utils/imageUtils';
 
@@ -20,9 +21,10 @@ export interface PetOwnerSummary {
 export interface Pet {
   id: string;
   name: string;
-  species: string;
+  species: Species;
   breed?: string;
   dateOfBirth?: string;
+  weightKg?: number;
   microchipId?: string;
   photoUrl?: string;
   thumbnailUrl?: string;
@@ -34,9 +36,10 @@ export interface Pet {
 
 export interface CreatePetInput {
   name: string;
-  species: string;
+  species: Species;
   breed?: string;
   dateOfBirth?: string;
+  weightKg?: number;
   microchipId?: string;
   photoUrl?: string;
   thumbnailUrl?: string;
@@ -45,9 +48,10 @@ export interface CreatePetInput {
 
 export interface UpdatePetInput {
   name?: string;
-  species?: string;
+  species?: Species;
   breed?: string;
   dateOfBirth?: string;
+  weightKg?: number;
   microchipId?: string;
   photoUrl?: string;
   thumbnailUrl?: string;
@@ -133,6 +137,7 @@ function petFromQRData(scan: QRScanResult): Pet | null {
     name: scan.petData.name || 'Unknown Pet',
     species: scan.petData.species || 'other',
     breed: scan.petData.breed,
+    weightKg: scan.petData.weightKg,
     microchipId: scan.petData.microchipId,
     photoUrl: scan.petData.photoUrl,
     ownerId: scan.petData.ownerId || '',

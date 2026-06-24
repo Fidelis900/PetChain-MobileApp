@@ -103,11 +103,10 @@ export async function stripExifAndCompress(
 
   // Second pass: apply compression.  We do this in two passes so the resize
   // step always works on the original full-quality image.
-  const compressed = await ImageManipulator.manipulateAsync(
-    resized.uri,
-    [],
-    { compress, format: ImageManipulator.SaveFormat.JPEG },
-  );
+  const compressed = await ImageManipulator.manipulateAsync(resized.uri, [], {
+    compress,
+    format: ImageManipulator.SaveFormat.JPEG,
+  });
 
   // Rough size estimate: dimensions × 3 bytes/pixel × compress factor
   const estimatedBytes = Math.round(compressed.width * compressed.height * 3 * compress * 0.1);

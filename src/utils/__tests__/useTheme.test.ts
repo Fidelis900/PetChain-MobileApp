@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { resolveThemeMode } from '../../context/ThemeContext';
+
 jest.mock('@react-native-async-storage/async-storage', () => ({
   getItem: jest.fn(),
   setItem: jest.fn(),
@@ -24,11 +26,6 @@ async function saveMode(mode: string): Promise<void> {
   await AsyncStorage.setItem(STORAGE_KEY, mode);
 }
 
-function resolveTheme(mode: string, system: 'light' | 'dark' | null): 'light' | 'dark' {
-  if (mode === 'system') return system ?? 'light';
-  return mode as 'light' | 'dark';
-}
-
 beforeEach(() => jest.clearAllMocks());
 
 describe('useTheme — storage logic', () => {
@@ -51,19 +48,19 @@ describe('useTheme — storage logic', () => {
 
 describe('useTheme — theme resolution', () => {
   it('system mode resolves to system color scheme', () => {
-    expect(resolveTheme('system', 'dark')).toBe('dark');
-    expect(resolveTheme('system', 'light')).toBe('light');
+    expect(resolveThemeMode('system', 'dark')).toBe('dark');
+    expect(resolveThemeMode('system', 'light')).toBe('light');
   });
 
   it('system mode falls back to light when scheme is null', () => {
-    expect(resolveTheme('system', null)).toBe('light');
+    expect(resolveThemeMode('system', null)).toBe('light');
   });
 
   it('manual light overrides system dark', () => {
-    expect(resolveTheme('light', 'dark')).toBe('light');
+    expect(resolveThemeMode('light', 'dark')).toBe('light');
   });
 
   it('manual dark overrides system light', () => {
-    expect(resolveTheme('dark', 'light')).toBe('dark');
+    expect(resolveThemeMode('dark', 'light')).toBe('dark');
   });
 });

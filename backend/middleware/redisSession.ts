@@ -34,17 +34,21 @@ const IS_PROD = process.env.NODE_ENV === 'production';
 export function createRedisSessionMiddleware(): RequestHandler {
   try {
     // Dynamic requires allow the module to be optional in the mobile-only context
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const session = require('express-session') as typeof import('express-session');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const { default: RedisStore } = require('connect-redis') as {
-      default: new (options: { client: unknown; prefix?: string }) => import('express-session').Store;
+      default: new (options: {
+        client: unknown;
+        prefix?: string;
+      }) => import('express-session').Store;
     };
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const { createClient } = require('redis') as typeof import('redis');
 
     const redisClient = createClient({ url: REDIS_URL });
 
+    // @ts-expect-error redis client typings differ between redis and ioredis packages.
     redisClient.connect().catch((err: Error) => {
       console.error('[redisSession] Failed to connect to Redis:', err.message);
     });

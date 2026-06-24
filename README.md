@@ -102,14 +102,10 @@ npm start
 
 ### Running on Device
 ```bash
-# iOS Simulator
-npm run ios
-
-# Android Emulator
-npm run android
-
-# Or scan QR code with Expo Go app on your phone
+# Start Expo and press i (iOS) or a (Android) in the terminal
 npm start
+
+# Or scan the QR code with Expo Go on your phone
 ```
 
 See [CONTRIBUTING.md](./docs/CONTRIBUTING.md) for development workflow.

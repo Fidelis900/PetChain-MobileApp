@@ -9,34 +9,52 @@ export type RootStackParamList = {
   Onboarding: undefined;
   Auth: undefined;
   Main: undefined;
+  Forum: undefined;
+  LostFound: undefined;
   // Modals
-  QRScanner: undefined;
+  QRScanner: { onScanSuccess?: (data: string) => void };
   ManualEntry: undefined;
   // Future: Payment / Subscription
   Payment: { planId?: string };
+  FiatOnRamp: undefined;
 };
 
 // ─── Main Tab ─────────────────────────────────────────────────────────────────
 export type MainTabParamList = {
   PetList: undefined;
-  Medications: undefined;
-  Appointments: undefined;
+  Medications: { medicationId?: string };
+  Appointments: { appointmentId?: string };
+  Vaccinations: { vaccinationId?: string; petId?: string; dueDate?: string };
+  HealthAlerts: undefined;
+  Telemedicine: undefined;
   Community: undefined;
-  Emergency: undefined;
+  Referrals: undefined;
+  Emergency: { sosId?: string };
+  Notifications: undefined;
   Profile: undefined;
 };
 
 // ─── Pet Stack (nested inside PetList tab) ────────────────────────────────────
 export type PetStackParamList = {
   PetListScreen: undefined;
+  Adoption: undefined;
   PetDetail: { petId: string };
+  AuditHistory: {
+    entityType: 'pet' | 'medication' | 'appointment';
+    entityId: string;
+    title?: string;
+  };
+  PetProfile: { petId: string };
   PetHealthDashboard: { petId: string; petName?: string };
   PetHealthMetrics: { petId: string; petName?: string };
   PetForm: { pet?: Pet; ownerId?: string };
   MedicalRecordSearch: { petId: string };
   MedicalRecordViewer: { petId: string; petName?: string };
   PetShare: { petId: string; petName: string };
+  TravelCertificate: { petId: string; petName?: string };
   DosageCalculator: { petId?: string; species?: string; weightKg?: number };
+  ReconciliationReport: { reportId?: string };
+  TrustlineManager: undefined;
   NearbyVet: undefined;
   VetDirectory: undefined;
   PrivacyDashboard: undefined;

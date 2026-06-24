@@ -7,7 +7,6 @@ const router = express.Router();
 
 // Load the OpenAPI spec from the docs folder
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const openApiSpec = require(path.join(__dirname, '../../docs/openapi.json'));
 
 const swaggerOptions: swaggerUi.SwaggerUiOptions = {

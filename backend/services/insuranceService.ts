@@ -86,7 +86,10 @@ export function submitClaim(
   // Simulate async status progression (mock)
   setTimeout(() => {
     const c = claims.get(claim.id);
-    if (c) { c.status = 'under_review'; c.updatedAt = new Date().toISOString(); }
+    if (c) {
+      c.status = 'under_review';
+      c.updatedAt = new Date().toISOString();
+    }
   }, 5000);
 
   return claim;
