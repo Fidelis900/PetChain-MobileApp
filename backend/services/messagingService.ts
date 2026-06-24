@@ -1,6 +1,7 @@
 import { type IncomingMessage, type Server } from 'http';
-import { WebSocketServer, type WebSocket } from 'ws';
+
 import { v4 as uuidv4 } from 'uuid';
+import { WebSocketServer, type WebSocket } from 'ws';
 
 export interface Message {
   id: string;
@@ -22,11 +23,7 @@ export function getConversationId(userA: string, userB: string): string {
   return [userA, userB].sort().join(':');
 }
 
-export function getMessages(
-  conversationId: string,
-  limit = 50,
-  before?: string,
-): Message[] {
+export function getMessages(conversationId: string, limit = 50, before?: string): Message[] {
   const all = messages.get(conversationId) ?? [];
   const filtered = before ? all.filter((m) => m.createdAt < before) : all;
   return filtered.slice(-limit);
@@ -54,7 +51,10 @@ export function attachWebSocketServer(server: Server): void {
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
     const url = new URL(req.url ?? '', 'http://localhost');
     const userId = url.searchParams.get('userId');
-    if (!userId) { ws.close(4001, 'userId required'); return; }
+    if (!userId) {
+      ws.close(4001, 'userId required');
+      return;
+    }
 
     clients.set(userId, ws);
 

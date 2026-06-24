@@ -34,7 +34,9 @@ export default function XLMPaymentScreen() {
       const data: PaymentIntent = await res.json();
       setIntent(data);
       setStatus('waiting');
-      setCountdown(Math.max(0, Math.floor((new Date(data.expiresAt).getTime() - Date.now()) / 1000)));
+      setCountdown(
+        Math.max(0, Math.floor((new Date(data.expiresAt).getTime() - Date.now()) / 1000)),
+      );
     } catch {
       setStatus('error');
     }
@@ -117,7 +119,9 @@ export default function XLMPaymentScreen() {
         </View>
       )}
 
-      {status === 'error' && <Text style={styles.error}>Something went wrong. Please try again.</Text>}
+      {status === 'error' && (
+        <Text style={styles.error}>Something went wrong. Please try again.</Text>
+      )}
     </View>
   );
 }

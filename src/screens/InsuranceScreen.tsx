@@ -55,7 +55,9 @@ const InsuranceScreen: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   const handleConnect = useCallback(() => {
     Alert.prompt(
@@ -104,7 +106,10 @@ const InsuranceScreen: React.FC = () => {
       <View style={styles.container}>
         <Text style={styles.title}>Pet Insurance</Text>
         <View style={styles.tabs}>
-          <TouchableOpacity style={[styles.tab, styles.tabActive]} onPress={() => setScreen('policies')}>
+          <TouchableOpacity
+            style={[styles.tab, styles.tabActive]}
+            onPress={() => setScreen('policies')}
+          >
             <Text style={styles.tabTextActive}>Policies</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.tab} onPress={() => setScreen('claims')}>
@@ -126,7 +131,12 @@ const InsuranceScreen: React.FC = () => {
               <Text style={styles.cardSub}>
                 Expires: {new Date(item.expiresAt).toLocaleDateString()}
               </Text>
-              <View style={[styles.badge, { backgroundColor: item.status === 'active' ? '#c6f6d5' : '#fed7d7' }]}>
+              <View
+                style={[
+                  styles.badge,
+                  { backgroundColor: item.status === 'active' ? '#c6f6d5' : '#fed7d7' },
+                ]}
+              >
                 <Text style={styles.badgeText}>{item.status}</Text>
               </View>
             </View>
@@ -134,7 +144,11 @@ const InsuranceScreen: React.FC = () => {
           ListEmptyComponent={<Text style={styles.empty}>No policies linked yet.</Text>}
         />
 
-        <TouchableOpacity style={styles.btn} onPress={handleConnect} accessibilityLabel="Connect insurance provider">
+        <TouchableOpacity
+          style={styles.btn}
+          onPress={handleConnect}
+          accessibilityLabel="Connect insurance provider"
+        >
           <Text style={styles.btnText}>+ Connect Provider</Text>
         </TouchableOpacity>
       </View>
@@ -150,7 +164,10 @@ const InsuranceScreen: React.FC = () => {
           <TouchableOpacity style={styles.tab} onPress={() => setScreen('policies')}>
             <Text style={styles.tabText}>Policies</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.tab, styles.tabActive]} onPress={() => setScreen('claims')}>
+          <TouchableOpacity
+            style={[styles.tab, styles.tabActive]}
+            onPress={() => setScreen('claims')}
+          >
             <Text style={styles.tabTextActive}>Claims</Text>
           </TouchableOpacity>
         </View>
@@ -179,7 +196,10 @@ const InsuranceScreen: React.FC = () => {
 
         <TouchableOpacity
           style={styles.btn}
-          onPress={() => { setSelectedPolicyId(policies[0]?.id ?? ''); setScreen('newClaim'); }}
+          onPress={() => {
+            setSelectedPolicyId(policies[0]?.id ?? '');
+            setScreen('newClaim');
+          }}
           accessibilityLabel="Submit new claim"
         >
           <Text style={styles.btnText}>+ Submit Claim</Text>
@@ -204,7 +224,9 @@ const InsuranceScreen: React.FC = () => {
           onPress={() => setSelectedPolicyId(p.id)}
           accessibilityLabel={`Select policy ${p.policyNumber}`}
         >
-          <Text style={styles.policyOptionText}>{p.provider} — {p.policyNumber}</Text>
+          <Text style={styles.policyOptionText}>
+            {p.provider} — {p.policyNumber}
+          </Text>
         </TouchableOpacity>
       ))}
 
@@ -235,7 +257,11 @@ const InsuranceScreen: React.FC = () => {
         disabled={submitting}
         accessibilityLabel="Submit claim"
       >
-        {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Submit Claim</Text>}
+        {submitting ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.btnText}>Submit Claim</Text>
+        )}
       </TouchableOpacity>
     </ScrollView>
   );
@@ -245,7 +271,12 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   loader: { flex: 1, marginTop: 40 },
   title: { fontSize: 22, fontWeight: '700', color: '#1a202c', padding: 16, paddingBottom: 8 },
-  tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e2e8f0', marginHorizontal: 16 },
+  tabs: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    marginHorizontal: 16,
+  },
   tab: { flex: 1, paddingVertical: 10, alignItems: 'center' },
   tabActive: { borderBottomWidth: 2, borderBottomColor: '#4299e1' },
   tabText: { color: '#718096', fontWeight: '600' },
@@ -259,16 +290,35 @@ const styles = StyleSheet.create({
   },
   cardTitle: { fontSize: 15, fontWeight: '700', color: '#1a202c', marginBottom: 4 },
   cardSub: { fontSize: 13, color: '#718096', marginBottom: 2 },
-  badge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, marginTop: 6 },
+  badge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginTop: 6,
+  },
   badgeText: { fontSize: 12, fontWeight: '600' },
   empty: { textAlign: 'center', color: '#718096', marginTop: 40 },
-  btn: { margin: 16, backgroundColor: '#4299e1', borderRadius: 8, paddingVertical: 12, alignItems: 'center' },
+  btn: {
+    margin: 16,
+    backgroundColor: '#4299e1',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
   btnDisabled: { opacity: 0.6 },
   btnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   formContent: { padding: 16 },
   back: { marginBottom: 8 },
   backText: { color: '#4299e1', fontSize: 16 },
-  label: { fontSize: 13, fontWeight: '600', color: '#718096', marginTop: 16, marginBottom: 6, textTransform: 'uppercase' },
+  label: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#718096',
+    marginTop: 16,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
   input: {
     borderWidth: 1,
     borderColor: '#e2e8f0',

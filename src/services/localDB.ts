@@ -54,6 +54,20 @@ async function init(): Promise<void> {
   await db.execAsync(
     `CREATE TABLE IF NOT EXISTS health_metrics (id TEXT PRIMARY KEY NOT NULL, pet_id TEXT NOT NULL, recorded_at TEXT NOT NULL, data TEXT NOT NULL)`,
   );
+
+  // Appointments table – indexed by pet_id and scheduled_at for conflict lookups
+  await db.execAsync(
+    `CREATE TABLE IF NOT EXISTS appointments (
+      id TEXT PRIMARY KEY NOT NULL,
+      pet_id TEXT NOT NULL,
+      scheduled_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'PENDING',
+      data TEXT NOT NULL
+    )`,
+  );
+  await db.execAsync(
+    `CREATE INDEX IF NOT EXISTS idx_appointments_pet_scheduled ON appointments (pet_id, scheduled_at)`,
+  );
 }
 
 // Initialize DB on module import
@@ -221,6 +235,83 @@ export async function deleteHealthMetricById(id: string): Promise<void> {
   await db.runAsync(`DELETE FROM health_metrics WHERE id = ?`, [id]);
 }
 
+// ─── Appointments CRUD ────────────────────────────────────────────────────────
+
+export async function getAllAppointmentsByPetId<T = unknown>(petId: string): Promise<T[]> {
+  const rows = await db.getAllAsync<{ data: string }>(
+    `SELECT data FROM appointments WHERE pet_id = ? ORDER BY scheduled_at ASC`,
+    [petId],
+  );
+  const out: T[] = [];
+  for (const row of rows) {
+    try {
+      const decrypted = await safeDecrypt<T>(row.data, 'localdb_appointments', true);
+      out.push(decrypted);
+    } catch {
+      // ignore bad rows
+    }
+  }
+  return out;
+}
+
+export async function getAllLocalAppointments<T = unknown>(): Promise<T[]> {
+  const rows = await db.getAllAsync<{ data: string }>(
+    `SELECT data FROM appointments ORDER BY scheduled_at ASC`,
+  );
+  const out: T[] = [];
+  for (const row of rows) {
+    try {
+      const decrypted = await safeDecrypt<T>(row.data, 'localdb_appointments', true);
+      out.push(decrypted);
+    } catch {
+      // ignore bad rows
+    }
+  }
+  return out;
+}
+
+/**
+ * Fetch appointments for a pet within a specific time window (for conflict detection).
+ * windowStart / windowEnd are ISO strings.
+ */
+export async function getAppointmentsInWindow<T = unknown>(
+  petId: string,
+  windowStart: string,
+  windowEnd: string,
+): Promise<T[]> {
+  const rows = await db.getAllAsync<{ data: string }>(
+    `SELECT data FROM appointments
+     WHERE pet_id = ? AND scheduled_at >= ? AND scheduled_at <= ?
+     AND status != 'CANCELLED'
+     ORDER BY scheduled_at ASC`,
+    [petId, windowStart, windowEnd],
+  );
+  const out: T[] = [];
+  for (const row of rows) {
+    try {
+      const decrypted = await safeDecrypt<T>(row.data, 'localdb_appointments', true);
+      out.push(decrypted);
+    } catch {
+      // ignore bad rows
+    }
+  }
+  return out;
+}
+
+export async function upsertAppointment<
+  T extends { id: string; petId: string; date: string; status?: string },
+>(appt: T): Promise<void> {
+  const encryptedData = await encrypt(appt, 'localdb_appointments');
+  await db.runAsync(
+    `INSERT OR REPLACE INTO appointments (id, pet_id, scheduled_at, status, data) VALUES (?, ?, ?, ?, ?)`,
+    [appt.id, appt.petId, appt.date, appt.status ?? 'PENDING', encryptedData],
+  );
+}
+
+export async function deleteAppointmentById(id: string): Promise<void> {
+  await db.runAsync(`DELETE FROM appointments WHERE id = ?`, [id]);
+}
+
 export default {
   getItem,
   setItem,
@@ -235,4 +326,9 @@ export default {
   getHealthMetricsByPetId,
   upsertHealthMetric,
   deleteHealthMetricById,
+  getAllAppointmentsByPetId,
+  getAllLocalAppointments,
+  getAppointmentsInWindow,
+  upsertAppointment,
+  deleteAppointmentById,
 };

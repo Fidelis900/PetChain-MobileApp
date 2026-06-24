@@ -15,14 +15,14 @@ const router = express.Router();
 router.use(authenticateJWT, authorizeRoles(UserRole.ADMIN));
 
 // GET /api/audit-logs — query audit logs with filters
-router.get('/', (_req: AuthenticatedRequest, res) => {
+router.get('/', async (_req: AuthenticatedRequest, res) => {
   const req = _req as AuthenticatedRequest & { query: Record<string, string> };
   const { actorId, action, resourceType, resourceId, startDate, endDate } = req.query;
 
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
 
-  const result = auditLogService.query({
+  const result = await auditLogService.query({
     actorId,
     action: action as AuditAction | undefined,
     resourceType: resourceType as AuditResourceType | undefined,

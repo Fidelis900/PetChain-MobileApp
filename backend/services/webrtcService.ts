@@ -18,7 +18,7 @@
  */
 
 import crypto from 'crypto';
-import http from 'http';
+import type http from 'http';
 
 import { Server as SocketIOServer, type Socket } from 'socket.io';
 
@@ -151,9 +151,7 @@ export function getConsultationById(id: string): Consultation | undefined {
 }
 
 export function listConsultationsForUser(userId: string): Consultation[] {
-  return [...consultations.values()].filter(
-    (c) => c.ownerId === userId || c.vetId === userId,
-  );
+  return [...consultations.values()].filter((c) => c.ownerId === userId || c.vetId === userId);
 }
 
 export function joinWaitingRoom(consultationId: string, ownerId: string): number {
@@ -367,9 +365,7 @@ function handleDisconnect(socket: Socket, consultationId: string): void {
   socket.to(consultationId).emit('peer_left', { userId: p.userId });
 
   // End the consultation if both parties have disconnected
-  const remaining = [...participants.values()].filter(
-    (q) => q.consultationId === consultationId,
-  );
+  const remaining = [...participants.values()].filter((q) => q.consultationId === consultationId);
 
   if (remaining.length === 0) {
     const c = consultations.get(consultationId);

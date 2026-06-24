@@ -177,11 +177,7 @@ const PetPhotosScreen: React.FC<Props> = ({ petId, petName, onBack }) => {
         )}
       </TouchableOpacity>
 
-      {uploading && (
-        <Text style={styles.uploadingHint}>
-          Stripping EXIF data and compressing…
-        </Text>
-      )}
+      {uploading && <Text style={styles.uploadingHint}>Stripping EXIF data and compressing…</Text>}
 
       {/* Photo grid */}
       {loading ? (
@@ -229,9 +225,7 @@ const PetPhotosScreen: React.FC<Props> = ({ petId, petName, onBack }) => {
                 style={styles.fullImage}
                 resizeMode="contain"
               />
-              {selectedPhoto.caption && (
-                <Text style={styles.caption}>{selectedPhoto.caption}</Text>
-              )}
+              {selectedPhoto.caption && <Text style={styles.caption}>{selectedPhoto.caption}</Text>}
               <Text style={styles.photoMeta}>
                 {new Date(selectedPhoto.uploadedAt).toLocaleDateString()} ·{' '}
                 {Math.round(selectedPhoto.sizeBytes / 1024)} KB

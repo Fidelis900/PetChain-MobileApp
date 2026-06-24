@@ -1,8 +1,8 @@
 import express from 'express';
 
 import { authenticateJWT, type AuthenticatedRequest } from '../../middleware/auth';
-import { ok, sendError } from '../response';
 import { search, type SearchIndex, INDICES } from '../../services/searchService';
+import { ok, sendError } from '../response';
 
 const router = express.Router();
 router.use(authenticateJWT);

@@ -1,7 +1,44 @@
+// @ts-nocheck
 import { query, closePool } from '../../src/db';
-import { seed } from '../seedData';
+import { buildSeedSummary, resolveSeedConfig, seed } from '../seedData';
 
 describe('Seed Data', () => {
+  describe('preset resolution', () => {
+    it('resolves the minimal preset for lightweight testing', () => {
+      expect(resolveSeedConfig({ preset: 'minimal' })).toMatchObject({
+        numOwners: 2,
+        numVets: 1,
+        petsPerOwner: 1,
+        recordsPerPet: 1,
+        appointmentsPerPet: 1,
+        medicationsPerPet: 1,
+      });
+    });
+
+    it('resolves the standard preset for development usage', () => {
+      expect(resolveSeedConfig({ preset: 'standard' }).numOwners).toBeGreaterThanOrEqual(4);
+      expect(resolveSeedConfig({ preset: 'standard' }).petsPerOwner).toBeGreaterThanOrEqual(2);
+    });
+
+    it('resolves the large preset for load testing', () => {
+      expect(resolveSeedConfig({ preset: 'large' }).numOwners).toBeGreaterThanOrEqual(10);
+      expect(resolveSeedConfig({ preset: 'large' }).recordsPerPet).toBeGreaterThanOrEqual(3);
+    });
+
+    it('builds a deterministic summary for seeded records', () => {
+      const config = resolveSeedConfig({ preset: 'minimal' });
+
+      expect(buildSeedSummary(config)).toEqual({
+        owners: 2,
+        vets: 1,
+        pets: 2,
+        medicalRecords: 2,
+        appointments: 2,
+        medications: 2,
+      });
+    });
+  });
+
   beforeAll(async () => {
     // Ensure database is available
     if (!process.env.DATABASE_URL) {

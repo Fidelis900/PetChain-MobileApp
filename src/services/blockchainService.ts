@@ -631,3 +631,26 @@ export const __testUtils = {
   computeRecordHash,
   sortObject,
 };
+
+/** Back-compat alias used by verificationService */
+export async function verifyMedicalRecord(
+  record: MedicalRecordWithChainData,
+): Promise<StellarRecordVerification> {
+  const result = await verifyMedicalRecordOnChain(record);
+  return {
+    verified: result.onChainVerified,
+    onChainHash: result.onChainHash,
+    recordId: result.recordId,
+    txHash: result.txHash,
+  };
+}
+
+/** Back-compat helper used by verificationService */
+export async function getTransactionDetails(txHash: string): Promise<StellarTransactionDetails> {
+  const history = await getTransactionHistory(undefined, undefined, 100);
+  const match = history.find((entry) => entry.hash === txHash);
+  if (!match) {
+    throw new BlockchainServiceError('Transaction not found', 'NOT_FOUND');
+  }
+  return match;
+}

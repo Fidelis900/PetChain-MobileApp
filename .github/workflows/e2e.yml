@@ -16,7 +16,7 @@ jobs:
     name: Build Preview APK via EAS
     runs-on: ubuntu-latest
     outputs:
-      apk-url: ${{ steps.eas-build.outputs.artifact-url }}
+      apk-url: ${{ steps.wait-build.outputs.apk-url }}
 
     steps:
       - name: Checkout
@@ -47,10 +47,6 @@ jobs:
             --json \
             --no-wait | jq -r '.[0].buildDetailsPageUrl')
           echo "build-page-url=$BUILD_URL" >> $GITHUB_OUTPUT
-          # Wait and get download URL
-          ARTIFACT_URL=$(eas build:view --json --latest \
-            --platform android | jq -r '.artifacts.buildUrl // empty')
-          echo "artifact-url=$ARTIFACT_URL" >> $GITHUB_OUTPUT
 
       - name: Wait for EAS Build to complete
         id: wait-build

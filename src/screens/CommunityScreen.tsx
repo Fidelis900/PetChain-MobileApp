@@ -1,3 +1,4 @@
+import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
@@ -13,6 +14,7 @@ import {
 import { v4 as uuid } from 'uuid';
 
 import type { CommunityPost, PostCategory } from '../models/CommunityPost';
+import type { RootStackParamList } from '../navigation/types';
 import { createPost, deletePost, getPosts, toggleLike } from '../services/communityService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -30,6 +32,7 @@ const EMPTY_FORM = { title: '', body: '', category: 'forum' as PostCategory };
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const CommunityScreen: React.FC = () => {
+  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const [filter, setFilter] = useState<FilterTab>('all');
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
@@ -117,6 +120,12 @@ const CommunityScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       {/* Filter tabs */}
+      <TouchableOpacity style={styles.forumNavBtn} onPress={() => navigation.navigate('Forum')}>
+        <Text style={styles.forumNavText}>Go to verified Forum</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.forumNavBtn} onPress={() => navigation.navigate('LostFound')}>
+        <Text style={styles.forumNavText}>Open Lost & Found Network</Text>
+      </TouchableOpacity>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -248,13 +257,22 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
-  filterContent: { paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
+  filterContent: { paddingHorizontal: 12, paddingVertical: 8 },
   filterTab: {
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 16,
     backgroundColor: '#f0f0f0',
+    marginRight: 8,
   },
+  forumNavBtn: {
+    padding: 12,
+    backgroundColor: '#4A90E2',
+    margin: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  forumNavText: { color: '#fff', fontWeight: '700' },
   filterTabActive: { backgroundColor: '#4A90E2' },
   filterTabText: { fontSize: 13, color: '#555' },
   filterTabTextActive: { color: '#fff', fontWeight: '600' },
@@ -307,12 +325,13 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 16, color: '#222' },
-  categoryRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  categoryRow: { flexDirection: 'row', marginBottom: 16 },
   categoryChip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
     backgroundColor: '#f0f0f0',
+    marginRight: 8,
   },
   categoryChipActive: { backgroundColor: '#4A90E2' },
   categoryChipText: { fontSize: 12, color: '#555' },
@@ -327,7 +346,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fafafa',
   },
   textArea: { height: 100, textAlignVertical: 'top' },
-  modalActions: { flexDirection: 'row', gap: 12, marginTop: 4 },
+  modalActions: { flexDirection: 'row', marginTop: 4 },
   cancelBtn: {
     flex: 1,
     padding: 14,

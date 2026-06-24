@@ -55,13 +55,7 @@ router.post('/', (req: AuthenticatedRequest, res) => {
     return sendError(res, 400, 'INVALID_DATE', 'scheduledAt must be a future ISO 8601 datetime');
   }
 
-  const consultation = createConsultation(
-    petId,
-    pet.ownerId,
-    vetId,
-    scheduledAt,
-    durationMinutes,
-  );
+  const consultation = createConsultation(petId, pet.ownerId, vetId, scheduledAt, durationMinutes);
 
   (req as AuditableRequest).audit?.('consultation.scheduled', 'pet', petId, {
     consultationId: consultation.id,
@@ -152,7 +146,8 @@ router.post('/:id/consent', (req: AuthenticatedRequest, res) => {
     userId,
   });
 
-  const bothConsented = updated.recordingConsent.ownerConsented && updated.recordingConsent.vetConsented;
+  const bothConsented =
+    updated.recordingConsent.ownerConsented && updated.recordingConsent.vetConsented;
 
   return res.json(
     ok({

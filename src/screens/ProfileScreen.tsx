@@ -24,6 +24,7 @@ import {
   recordScreenLoad,
   type PerformanceDashboard,
 } from '../services/performanceService';
+import { getReferralStats, type ReferralStats } from '../services/referralService';
 import { getUserProfile, saveUserProfile, updateUserProfile } from '../services/userService';
 import { formatAddress } from '../utils/localeValues';
 import { useSecureScreen } from '../utils/secureScreen';
@@ -54,6 +55,7 @@ const ProfileScreen: React.FC = () => {
   const [backupJson, setBackupJson] = useState('');
   const [backupBusy, setBackupBusy] = useState(false);
   const [performance, setPerformance] = useState<PerformanceDashboard | null>(null);
+  const [referralStats, setReferralStats] = useState<ReferralStats | null>(null);
   const loadStartedAt = useRef(Date.now());
 
   const reloadProfile = async () => {
@@ -82,12 +84,21 @@ const ProfileScreen: React.FC = () => {
     setPerformance(await getPerformanceDashboard());
   };
 
+  const reloadReferrals = async () => {
+    try {
+      setReferralStats(await getReferralStats());
+    } catch {
+      setReferralStats(null);
+    }
+  };
+
   useEffect(() => {
     void (async () => {
       await reloadProfile();
       await recordScreenLoad('Profile', Date.now() - loadStartedAt.current);
       await recordMemorySample('profile-screen');
       await reloadPerformance();
+      await reloadReferrals();
     })();
   }, []);
 
@@ -199,6 +210,18 @@ const ProfileScreen: React.FC = () => {
     }
   };
 
+  const handleShareReferralCode = async () => {
+    if (!referralStats?.code) {
+      Alert.alert('Referral code', 'Your referral code is not available right now.');
+      return;
+    }
+
+    await Share.share({
+      title: 'Join PetChain',
+      message: `Use my PetChain referral code ${referralStats.code} and create your first pet record.`,
+    });
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.heading}>User Profile</Text>
@@ -303,6 +326,33 @@ const ProfileScreen: React.FC = () => {
       <TouchableOpacity style={styles.saveButton} onPress={save}>
         <Text style={styles.saveButtonText}>Save Profile</Text>
       </TouchableOpacity>
+
+      <Text style={styles.sectionTitle}>Referrals & Credits</Text>
+      <View style={styles.card}>
+        <View style={styles.referralHeader}>
+          <View>
+            <Text style={styles.referralLabel}>Your referral code</Text>
+            <Text style={styles.referralCode}>{referralStats?.code ?? 'Sign in to sync'}</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.smallButton}
+            onPress={() => void handleShareReferralCode()}
+          >
+            <Text style={styles.smallButtonText}>Share</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.referralStatsRow}>
+          <Text style={styles.dashboardText}>
+            Converted: {referralStats?.successfulConversions ?? 0}
+          </Text>
+          <Text style={styles.dashboardText}>
+            Pending: {referralStats?.pendingConversions ?? 0}
+          </Text>
+          <Text style={styles.dashboardText}>
+            Credits: {referralStats?.availablePremiumDays ?? 0} days
+          </Text>
+        </View>
+      </View>
 
       <Text style={styles.sectionTitle}>Backup & Performance</Text>
       <View style={styles.card}>
@@ -473,6 +523,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     fontStyle: 'italic',
   },
+  referralHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  referralLabel: { fontSize: 13, color: '#666', marginBottom: 4 },
+  referralCode: { fontSize: 22, color: '#111', fontWeight: '800', letterSpacing: 0 },
+  smallButton: {
+    backgroundColor: '#4CAF50',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  smallButtonText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  referralStatsRow: { marginTop: 12 },
 });
 
 export default ProfileScreen;
