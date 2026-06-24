@@ -72,22 +72,19 @@ const VetDirectoryScreen: React.FC = () => {
     }
   }, []);
 
-  const openChat = useCallback(
-    async (vet: VetProfile) => {
-      setSelectedVet(vet);
-      setChatLoading(true);
-      try {
-        const history = await getMessages(vet.id);
-        setMessages(history);
-        setScreen('chat');
-      } catch {
-        Alert.alert('Error', 'Failed to load messages');
-      } finally {
-        setChatLoading(false);
-      }
-    },
-    [],
-  );
+  const openChat = useCallback(async (vet: VetProfile) => {
+    setSelectedVet(vet);
+    setChatLoading(true);
+    try {
+      const history = await getMessages(vet.id);
+      setMessages(history);
+      setScreen('chat');
+    } catch {
+      Alert.alert('Error', 'Failed to load messages');
+    } finally {
+      setChatLoading(false);
+    }
+  }, []);
 
   const handleSend = useCallback(async () => {
     if (!msgInput.trim() || !selectedVet) return;
@@ -238,9 +235,7 @@ const VetDirectoryScreen: React.FC = () => {
                       {item.content}
                     </Text>
                   ) : null}
-                  {item.attachmentUrl ? (
-                    <Text style={styles.attachment}>📎 Attachment</Text>
-                  ) : null}
+                  {item.attachmentUrl ? <Text style={styles.attachment}>📎 Attachment</Text> : null}
                   <Text style={styles.timestamp}>
                     {new Date(item.createdAt).toLocaleTimeString([], {
                       hour: '2-digit',
@@ -251,9 +246,7 @@ const VetDirectoryScreen: React.FC = () => {
               );
             }}
             contentContainerStyle={styles.chatList}
-            ListEmptyComponent={
-              <Text style={styles.empty}>No messages yet. Say hello!</Text>
-            }
+            ListEmptyComponent={<Text style={styles.empty}>No messages yet. Say hello!</Text>}
           />
         )}
 
@@ -335,7 +328,13 @@ const styles = StyleSheet.create({
   profileContent: { padding: 16 },
   back: { marginBottom: 8 },
   backText: { color: '#4299e1', fontSize: 16 },
-  label: { fontSize: 12, fontWeight: '600', color: '#718096', marginTop: 12, textTransform: 'uppercase' },
+  label: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#718096',
+    marginTop: 12,
+    textTransform: 'uppercase',
+  },
   value: { fontSize: 15, color: '#1a202c', marginTop: 2 },
   chatHeader: {
     flexDirection: 'row',

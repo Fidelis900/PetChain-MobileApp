@@ -1,62 +1,112 @@
-import React, { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useState, useCallback, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 
-import { authenticateWithBiometrics, verifyPin } from '../services/authService';
-import { useAuth } from '../context/AuthContext';
+import { authenticateWithBiometric, verifyPin } from '../services/authService';
 
-export default function LockScreen() {
-  const { unlock, logout } = useAuth();
+interface LockScreenProps {
+  onUnlock: () => void;
+  showPinFallback?: boolean;
+}
+
+export default function LockScreen({ onUnlock, showPinFallback = false }: LockScreenProps) {
   const [pin, setPin] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [mode, setMode] = useState<'biometric' | 'pin'>(showPinFallback ? 'pin' : 'biometric');
+  const [loading, setLoading] = useState(false);
 
-  const handleBiometric = async () => {
-    setIsSubmitting(true);
+  const handleBiometric = useCallback(async () => {
+    setLoading(true);
     try {
-      await authenticateWithBiometrics();
-      unlock();
-    } catch {
-      Alert.alert('Biometric unavailable', 'Please unlock with your PIN.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handlePin = async () => {
-    setIsSubmitting(true);
-    try {
-      if (await verifyPin(pin)) {
-        setPin('');
-        unlock();
+      const ok = await authenticateWithBiometric();
+      if (ok) {
+        onUnlock();
       } else {
-        Alert.alert('Invalid PIN', 'Please try again. The app locks after 5 failed attempts.');
+        setMode('pin');
       }
+    } catch {
+      setMode('pin');
     } finally {
-      setIsSubmitting(false);
+      setLoading(false);
     }
-  };
+  }, [onUnlock]);
+
+  useEffect(() => {
+    if (mode === 'biometric') void handleBiometric();
+  }, [mode, handleBiometric]);
+
+  const handlePinDigit = useCallback(
+    async (digit: string) => {
+      const next = pin + digit;
+      setPin(next);
+      if (next.length === 6) {
+        setLoading(true);
+        try {
+          const ok = await verifyPin(next);
+          if (ok) {
+            onUnlock();
+          } else {
+            Alert.alert('Incorrect PIN', 'Please try again.');
+            setPin('');
+          }
+        } finally {
+          setLoading(false);
+        }
+      }
+    },
+    [pin, onUnlock],
+  );
+
+  const handleDelete = useCallback(() => setPin((p) => p.slice(0, -1)), []);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>PetChain Locked</Text>
-      <Text style={styles.subtitle}>Use biometrics or your secure PIN to continue.</Text>
-      <Pressable style={styles.primaryButton} disabled={isSubmitting} onPress={handleBiometric}>
-        <Text style={styles.primaryButtonText}>Unlock with Biometrics</Text>
-      </Pressable>
-      <TextInput
-        style={styles.input}
-        value={pin}
-        onChangeText={setPin}
-        placeholder="Enter PIN"
-        secureTextEntry
-        keyboardType="number-pad"
-        maxLength={12}
-      />
-      <Pressable style={styles.secondaryButton} disabled={isSubmitting || pin.length === 0} onPress={handlePin}>
-        <Text style={styles.secondaryButtonText}>Unlock with PIN</Text>
-      </Pressable>
-      <Pressable disabled={isSubmitting} onPress={logout}>
-        <Text style={styles.logoutText}>Sign out</Text>
-      </Pressable>
+      <Text style={styles.title}>🔒 PetChain</Text>
+      <Text style={styles.subtitle}>
+        {mode === 'biometric' ? 'Authenticating…' : 'Enter your 6-digit PIN'}
+      </Text>
+
+      {mode === 'pin' && (
+        <>
+          <View style={styles.dotsRow}>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <View key={i} style={[styles.dot, i < pin.length && styles.dotFilled]} />
+            ))}
+          </View>
+
+          {loading ? (
+            <ActivityIndicator size="large" color="#4A90E2" style={styles.loader} />
+          ) : (
+            <View style={styles.numpad}>
+              {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((key, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={[styles.key, !key && styles.keyEmpty]}
+                  onPress={() => {
+                    if (!key) return;
+                    if (key === '⌫') handleDelete();
+                    else void handlePinDigit(key);
+                  }}
+                  disabled={!key}
+                  accessibilityLabel={key === '⌫' ? 'delete' : key || undefined}
+                >
+                  <Text style={styles.keyText}>{key}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={styles.biometricBtn}
+            onPress={() => setMode('biometric')}
+            accessibilityLabel="Use biometric authentication"
+          >
+            <Text style={styles.biometricText}>Use Face ID / Fingerprint</Text>
+          </TouchableOpacity>
+        </>
+      )}
+
+      {mode === 'biometric' && (
+        <ActivityIndicator size="large" color="#4A90E2" style={styles.loader} />
+      )}
     </View>
   );
 }
@@ -64,62 +114,41 @@ export default function LockScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#1A1A2E',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
-    backgroundColor: '#0f172a',
+    paddingHorizontal: 32,
   },
-  title: {
-    color: '#ffffff',
-    fontSize: 28,
-    fontWeight: '700',
-    marginBottom: 8,
+  title: { fontSize: 32, fontWeight: '700', color: '#FFFFFF', marginBottom: 8 },
+  subtitle: { fontSize: 16, color: '#A0A0B0', marginBottom: 40 },
+  dotsRow: { flexDirection: 'row', gap: 16, marginBottom: 40 },
+  dot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#4A90E2',
+    backgroundColor: 'transparent',
   },
-  subtitle: {
-    color: '#cbd5e1',
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 28,
+  dotFilled: { backgroundColor: '#4A90E2' },
+  numpad: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    width: 240,
+    gap: 16,
+    justifyContent: 'center',
   },
-  input: {
-    width: '100%',
-    borderRadius: 14,
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 18,
-    textAlign: 'center',
-    marginTop: 16,
-  },
-  primaryButton: {
-    width: '100%',
-    borderRadius: 14,
-    backgroundColor: '#22c55e',
-    paddingVertical: 16,
+  key: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#2A2A4A',
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  primaryButtonText: {
-    color: '#052e16',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  secondaryButton: {
-    width: '100%',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#38bdf8',
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  secondaryButtonText: {
-    color: '#e0f2fe',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  logoutText: {
-    color: '#fca5a5',
-    marginTop: 24,
-    fontSize: 15,
-  },
+  keyEmpty: { backgroundColor: 'transparent' },
+  keyText: { fontSize: 22, color: '#FFFFFF', fontWeight: '500' },
+  loader: { marginTop: 24 },
+  biometricBtn: { marginTop: 32 },
+  biometricText: { color: '#4A90E2', fontSize: 15 },
 });

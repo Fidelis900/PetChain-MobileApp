@@ -10,7 +10,10 @@ import {
   View,
 } from 'react-native';
 
+import type { Species } from '../models/Pet';
+import breedInsightsService from '../services/breedInsightsService';
 import petService, { type Pet } from '../services/petService';
+import { parseWeightToKg, weightUnit } from '../utils/localeValues';
 import { getPhoto, removePhoto, savePhoto } from '../utils/petPhotoStore';
 
 interface Props {
@@ -27,10 +30,18 @@ interface FormState {
   species: string;
   breed: string;
   dateOfBirth: string;
+  weight: string;
   microchipId: string;
 }
 
-const EMPTY: FormState = { name: '', species: '', breed: '', dateOfBirth: '', microchipId: '' };
+const EMPTY: FormState = {
+  name: '',
+  species: '',
+  breed: '',
+  dateOfBirth: '',
+  weight: '',
+  microchipId: '',
+};
 
 const PetFormScreen: React.FC<Props> = ({ pet, ownerId = '', onBack, onSaved }) => {
   const isEdit = !!pet;
@@ -41,10 +52,13 @@ const PetFormScreen: React.FC<Props> = ({ pet, ownerId = '', onBack, onSaved }) 
           species: pet.species,
           breed: pet.breed ?? '',
           dateOfBirth: pet.dateOfBirth?.slice(0, 10) ?? '',
+          weight: pet.weightKg ? pet.weightKg.toString() : '',
           microchipId: pet.microchipId ?? '',
         }
       : EMPTY,
   );
+  const [breedOptions, setBreedOptions] = useState<string[]>([]);
+  const [breedSuggestions, setBreedSuggestions] = useState<string[]>([]);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -56,7 +70,37 @@ const PetFormScreen: React.FC<Props> = ({ pet, ownerId = '', onBack, onSaved }) 
     void loadPhoto();
   }, [loadPhoto]);
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const breeds = await breedInsightsService.getBreedList();
+        setBreedOptions(breeds.map((breed) => breed.name));
+      } catch {
+        setBreedOptions([]);
+      }
+    })();
+  }, []);
+
   const set = (key: keyof FormState) => (val: string) => setForm((f) => ({ ...f, [key]: val }));
+
+  const updateBreedField = (value: string) => {
+    setForm((f) => ({ ...f, breed: value }));
+    const normalized = value.trim().toLowerCase();
+
+    if (!normalized) {
+      setBreedSuggestions([]);
+      return;
+    }
+
+    setBreedSuggestions(
+      breedOptions.filter((breed) => breed.toLowerCase().includes(normalized)).slice(0, 6),
+    );
+  };
+
+  const selectBreedSuggestion = (breed: string) => {
+    setForm((f) => ({ ...f, breed }));
+    setBreedSuggestions([]);
+  };
 
   // ── Photo management ───────────────────────────────────────────────────────
   // Without expo-image-picker installed we prompt for a URI directly.
@@ -97,11 +141,16 @@ const PetFormScreen: React.FC<Props> = ({ pet, ownerId = '', onBack, onSaved }) 
     }
     setSaving(true);
     try {
+      const weightValue = Number(form.weight.trim());
       const payload = {
         name: form.name.trim(),
-        species: form.species.trim(),
+        species: form.species.trim() as Species,
         breed: form.breed.trim() || undefined,
         dateOfBirth: form.dateOfBirth.trim() || undefined,
+        weightKg:
+          Number.isFinite(weightValue) && weightValue > 0
+            ? parseWeightToKg(weightValue)
+            : undefined,
         microchipId: form.microchipId.trim() || undefined,
       };
 
@@ -128,8 +177,7 @@ const PetFormScreen: React.FC<Props> = ({ pet, ownerId = '', onBack, onSaved }) 
   };
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
+    <View style={styles.container} testID="pet-form-screen">
       <View style={styles.header}>
         <TouchableOpacity
           onPress={onBack}
@@ -146,6 +194,7 @@ const PetFormScreen: React.FC<Props> = ({ pet, ownerId = '', onBack, onSaved }) 
           disabled={saving}
           accessibilityRole="button"
           accessibilityLabel={isEdit ? 'Save changes' : 'Save pet'}
+          testID="pet-form-save-button"
         >
           <Text style={styles.saveBtnText}>{saving ? 'Saving…' : 'Save'}</Text>
         </TouchableOpacity>
@@ -178,26 +227,78 @@ const PetFormScreen: React.FC<Props> = ({ pet, ownerId = '', onBack, onSaved }) 
         <View style={styles.formCard}>
           {(
             [
-              { key: 'name', label: 'Name *', placeholder: 'e.g. Buddy' },
-              { key: 'species', label: 'Species *', placeholder: 'e.g. Dog, Cat' },
-              { key: 'breed', label: 'Breed', placeholder: 'e.g. Labrador' },
-              { key: 'dateOfBirth', label: 'Date of Birth', placeholder: 'YYYY-MM-DD' },
-              { key: 'microchipId', label: 'Microchip ID', placeholder: 'Optional' },
-            ] as { key: keyof FormState; label: string; placeholder: string }[]
-          ).map(({ key, label, placeholder }) => (
+              { key: 'name', label: 'Name *', placeholder: 'e.g. Buddy', keyboardType: 'default' },
+              {
+                key: 'species',
+                label: 'Species *',
+                placeholder: 'e.g. Dog, Cat',
+                keyboardType: 'default',
+              },
+              {
+                key: 'breed',
+                label: 'Breed',
+                placeholder: 'e.g. Labrador',
+                keyboardType: 'default',
+              },
+              {
+                key: 'weight',
+                label: `Weight (${weightUnit()})`,
+                placeholder: `e.g. 12.5`,
+                keyboardType: 'decimal-pad',
+              },
+              {
+                key: 'dateOfBirth',
+                label: 'Date of Birth',
+                placeholder: 'YYYY-MM-DD',
+                keyboardType: 'default',
+              },
+              {
+                key: 'microchipId',
+                label: 'Microchip ID',
+                placeholder: 'Optional',
+                keyboardType: 'default',
+              },
+            ] as Array<{
+              key: keyof FormState;
+              label: string;
+              placeholder: string;
+              keyboardType: 'default' | 'decimal-pad';
+            }>
+          ).map(({ key, label, placeholder, keyboardType }) => (
             <View key={key} style={styles.fieldRow}>
               <Text style={styles.fieldLabel}>{label}</Text>
               <TextInput
                 style={styles.input}
                 placeholder={placeholder}
                 value={form[key]}
-                onChangeText={set(key)}
+                onChangeText={key === 'breed' ? updateBreedField : set(key)}
+                keyboardType={keyboardType}
                 placeholderTextColor="#bbb"
                 accessibilityLabel={label.replace('*', '').trim()}
                 returnKeyType="next"
+                testID={`pet-${key}-input`}
               />
             </View>
           ))}
+
+          {breedSuggestions.length > 0 && (
+            <View style={styles.suggestionsCard}>
+              <Text style={styles.suggestionsTitle}>Suggested breeds</Text>
+              <View style={styles.suggestionsRow}>
+                {breedSuggestions.map((suggestion) => (
+                  <TouchableOpacity
+                    key={suggestion}
+                    onPress={() => selectBreedSuggestion(suggestion)}
+                    style={styles.suggestionChip}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Select ${suggestion}`}
+                  >
+                    <Text style={styles.suggestionText}>{suggestion}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
         </View>
       </ScrollView>
     </View>
@@ -252,6 +353,37 @@ const styles = StyleSheet.create({
     fontSize: 14,
     backgroundColor: '#fafafa',
     color: '#1a1a1a',
+  },
+  suggestionsCard: {
+    marginTop: 8,
+    padding: 12,
+    backgroundColor: '#f1f8e9',
+    borderRadius: 10,
+  },
+  suggestionsTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#33691e',
+    marginBottom: 8,
+  },
+  suggestionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -4,
+  },
+  suggestionChip: {
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#c5e1a5',
+    margin: 4,
+  },
+  suggestionText: {
+    color: '#33691e',
+    fontSize: 13,
+    fontWeight: '600',
   },
 });
 

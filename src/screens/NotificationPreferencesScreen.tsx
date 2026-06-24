@@ -52,15 +52,16 @@ const NotificationPreferencesScreen: React.FC<Props> = ({ onBack }) => {
   );
 
   const requestNotificationPermission = async (): Promise<boolean> => {
-    const { status } = await Notifications.requestPermissionsAsync();
-    return status === 'granted';
+    const permission = await Notifications.requestPermissionsAsync();
+    return (permission as { granted?: boolean; status?: string }).granted === true;
   };
 
   const handleToggleMedicationReminders = async (value: boolean) => {
     if (value) {
-      const { status } = await Notifications.getPermissionsAsync();
-      if (status !== 'granted') {
-        setNotifPermissionDenied(status === 'denied');
+      const permission = await Notifications.getPermissionsAsync();
+      const status = permission as { granted?: boolean; status?: string; canAskAgain?: boolean };
+      if (!status.granted) {
+        setNotifPermissionDenied(status.canAskAgain === false || status.status === 'denied');
         setShowRationale(true);
         return;
       }

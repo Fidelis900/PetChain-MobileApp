@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const RECENT_KEY = '@search_recent';
-const MAX_RECENT = 8;
+const MAX_RECENT = 10;
 
 export interface QuickAction {
   id: string;

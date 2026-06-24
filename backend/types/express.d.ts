@@ -1,8 +1,16 @@
-import "express";
+import 'express';
 
-declare module "express-serve-static-core" {
+declare module 'express-serve-static-core' {
   interface Request {
-    db?: any;
-    user?: any;
+    db?: {
+      query: (sql: string, params?: unknown[]) => Promise<unknown[]>;
+    };
+    user?: {
+      id: string;
+      email?: string;
+      role?: string;
+      mfaVerified?: boolean;
+    };
+    correlationId?: string;
   }
 }

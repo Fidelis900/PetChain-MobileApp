@@ -4,10 +4,75 @@ import axios, {
   type AxiosRequestConfig,
   type AxiosResponse,
 } from 'axios';
+import { fetch as pinnedFetch } from 'react-native-ssl-pinning';
 
 import config from '../config';
+import { getToken } from './authService';
+import { SSL_PINS, PIN_FAILURE_SUPPORT_URL } from '../config/security';
 import { setupInterceptors } from '../middleware/apiInterceptors';
 import { logError } from '../utils/errorLogger';
+import performance, { recordApiTiming, startSpan, finishSpan } from '../utils/performance';
+
+// ---------------------------------------------------------------------------
+// SSL Pinning helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract the hostname from a URL string.
+ */
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Perform a pinned HTTPS request using react-native-ssl-pinning.
+ * Falls back to a user-facing error (not a silent bypass) on pin failure.
+ */
+export async function pinnedRequest<T>(
+  url: string,
+  options: RequestInit & { method?: string } = {},
+): Promise<T> {
+  const hostname = hostnameOf(url);
+  const pins = SSL_PINS[hostname];
+
+  if (!pins || pins.length === 0) {
+    // No pins configured for this host — use regular fetch
+    const res = await fetch(url, options);
+    return res.json() as Promise<T>;
+  }
+
+  try {
+    const res = await pinnedFetch(url, {
+      method: (options.method ?? 'GET') as 'GET' | 'POST' | 'PUT' | 'DELETE',
+      headers: (options.headers as Record<string, string>) ?? {},
+      body: options.body as string | undefined,
+      sslPinning: {
+        certs: pins.map((p) => p.replace('sha256/', '')),
+      },
+      timeoutInterval: config.api.timeoutMs,
+    });
+    return JSON.parse(res.bodyString ?? '{}') as T;
+  } catch (err) {
+    const isPinFailure =
+      err instanceof Error &&
+      (err.message.includes('SSL') ||
+        err.message.includes('certificate') ||
+        err.message.includes('pinning'));
+
+    if (isPinFailure) {
+      logError(err, { service: 'apiClient', action: 'ssl_pin_failure', hostname });
+      throw new Error(
+        `Security error: the server certificate could not be verified. ` +
+          `If this persists, contact support at ${PIN_FAILURE_SUPPORT_URL}`,
+      );
+    }
+    throw err;
+  }
+}
 
 // --- Circuit Breaker ---
 type CircuitState = 'CLOSED' | 'OPEN' | 'HALF_OPEN';
@@ -82,6 +147,14 @@ const apiClient: AxiosInstance = axios.create({
   },
 });
 
+apiClient.interceptors.request.use(async (requestConfig) => {
+  const token = await getToken();
+  if (token) {
+    requestConfig.headers = requestConfig.headers ?? ({} as typeof requestConfig.headers);
+    (requestConfig.headers as Record<string, string>).Authorization = `Bearer ${token}`;
+  }
+  return requestConfig;
+});
 setupInterceptors(apiClient);
 
 // --- Resilient request wrapper ---
@@ -107,7 +180,19 @@ export async function resilientRequest<T>(
     try {
       if (attempt > 0) await delay(attempt - 1);
 
+      const span = startSpan(`http ${requestConfig.method ?? 'request'} ${requestConfig.url}`);
+      const started = Date.now();
       const response = await apiClient.request<T>(requestConfig);
+      const duration = Date.now() - started;
+
+      // record timings
+      try {
+        recordApiTiming(requestConfig.url, requestConfig.method, duration, response.status);
+      } catch (e) {
+        // ignore metric errors
+      }
+
+      finishSpan(span);
 
       recordSuccess();
       return response;

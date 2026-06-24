@@ -26,7 +26,7 @@ export const reminderService = {
         body: 'Time to take your medication',
         data: { reminderId, snoozed: true },
       },
-      trigger: { date: snoozeUntil },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: snoozeUntil },
     });
 
     await fetch('/api/reminders/snooze', {
@@ -48,7 +48,9 @@ export const reminderService = {
       if (!res.ok) return null;
 
       const { suggestedHour } = (await res.json()) as { suggestedHour?: number | null };
-      return typeof suggestedHour === 'number' ? `${String(suggestedHour).padStart(2, '0')}:00` : null;
+      return typeof suggestedHour === 'number'
+        ? `${String(suggestedHour).padStart(2, '0')}:00`
+        : null;
     } catch {
       return null;
     }

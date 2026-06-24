@@ -31,7 +31,6 @@ jest.mock('../../config', () => ({
 
 describe('apiClient', () => {
   beforeAll(() => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const mod = require('../apiClient');
     apiClient = mod.default;
     resilientRequest = mod.resilientRequest;

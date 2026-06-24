@@ -23,7 +23,9 @@ router.post('/snooze', async (req: AuthenticatedRequest, res) => {
   };
 
   if (!reminderId || !durationMinutes || !snoozeUntil) {
-    return res.status(400).json({ error: 'reminderId, durationMinutes, and snoozeUntil are required' });
+    return res
+      .status(400)
+      .json({ error: 'reminderId, durationMinutes, and snoozeUntil are required' });
   }
 
   snoozeRecords.push({
@@ -55,9 +57,7 @@ router.get('/:reminderId/suggested-time', async (req: AuthenticatedRequest, res)
     freq[hour] = (freq[hour] || 0) + 1;
   }
 
-  const suggestedHour = Number(
-    Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0],
-  );
+  const suggestedHour = Number(Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0]);
 
   return res.json({ suggestedHour });
 });

@@ -1,6 +1,6 @@
+import { networkMonitor } from '../../utils/networkMonitor';
 import apiClient from '../apiClient';
 import { SyncEngine } from '../syncEngine';
-import { networkMonitor } from '../../utils/networkMonitor';
 
 jest.mock('../apiClient');
 jest.mock('../../utils/networkMonitor', () => ({
@@ -28,7 +28,9 @@ jest.mock('expo-sqlite', () => ({
       if (sql.includes('DELETE FROM dirty_records')) delete sqliteState[String(params[0])];
       return Promise.resolve({ changes: 1 });
     }),
-    getFirstAsync: jest.fn((_sql: string, params: unknown[]) => Promise.resolve(sqliteState[String(params[0])] ?? null)),
+    getFirstAsync: jest.fn((_sql: string, params: unknown[]) =>
+      Promise.resolve(sqliteState[String(params[0])] ?? null),
+    ),
     getAllAsync: jest.fn(() => Promise.resolve(Object.values(sqliteState))),
   }),
 }));
@@ -52,7 +54,9 @@ describe('SyncEngine', () => {
 
   it('keeps failed records when network interruption happens mid-sync', async () => {
     (networkMonitor.isOnline as jest.Mock).mockResolvedValue(true);
-    (apiClient.post as jest.Mock).mockResolvedValueOnce({ data: { results: [{ status: 'updated' }] } });
+    (apiClient.post as jest.Mock).mockResolvedValueOnce({
+      data: { results: [{ status: 'updated' }] },
+    });
     (apiClient.post as jest.Mock).mockRejectedValueOnce(new Error('network down'));
     const engine = new SyncEngine({ batchSize: 10 });
 

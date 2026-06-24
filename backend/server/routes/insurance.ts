@@ -1,7 +1,6 @@
 import express from 'express';
 
 import { authenticateJWT, type AuthenticatedRequest } from '../../middleware/auth';
-import { ok, sendError } from '../response';
 import {
   exchangeOAuthCode,
   getClaim,
@@ -11,6 +10,7 @@ import {
   submitClaim,
   type InsuranceProvider,
 } from '../../services/insuranceService';
+import { ok, sendError } from '../response';
 
 const router = express.Router();
 router.use(authenticateJWT);
@@ -26,7 +26,12 @@ router.get('/policies', (req: AuthenticatedRequest, res) => {
 router.post('/connect', async (req: AuthenticatedRequest, res) => {
   const { provider, code } = req.body as { provider: InsuranceProvider; code: string };
   if (!provider || !PROVIDERS.includes(provider)) {
-    return sendError(res, 400, 'VALIDATION_ERROR', `provider must be one of: ${PROVIDERS.join(', ')}`);
+    return sendError(
+      res,
+      400,
+      'VALIDATION_ERROR',
+      `provider must be one of: ${PROVIDERS.join(', ')}`,
+    );
   }
   if (!code) return sendError(res, 400, 'VALIDATION_ERROR', 'code required');
   try {

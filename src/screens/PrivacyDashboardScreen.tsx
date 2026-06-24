@@ -69,7 +69,10 @@ const PrivacyDashboardScreen: React.FC = () => {
   const handleExport = useCallback(async () => {
     try {
       const res = await resilientRequest<object>({ method: 'GET', url: '/privacy/export' });
-      Alert.alert('Export Ready', 'Your data export has been prepared.\n\n' + JSON.stringify(res.data).slice(0, 200) + '…');
+      Alert.alert(
+        'Export Ready',
+        'Your data export has been prepared.\n\n' + JSON.stringify(res.data).slice(0, 200) + '…',
+      );
     } catch {
       Alert.alert('Error', 'Failed to export data.');
     }
@@ -167,7 +170,13 @@ const styles = StyleSheet.create({
   loader: { flex: 1, marginTop: 40 },
   title: { fontSize: 22, fontWeight: '700', color: '#1a202c', marginBottom: 4 },
   subtitle: { fontSize: 14, color: '#718096', marginBottom: 20 },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#2d3748', marginTop: 24, marginBottom: 12 },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#2d3748',
+    marginTop: 24,
+    marginBottom: 12,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

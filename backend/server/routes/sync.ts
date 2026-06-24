@@ -57,7 +57,9 @@ router.get('/pull', (req, res) => {
   return res.json(
     ok({
       pets: [...store.pets.values()].filter((item) => changedSince(item.updatedAt)),
-      medicalRecords: [...store.medicalRecords.values()].filter((item) => changedSince(item.updatedAt)),
+      medicalRecords: [...store.medicalRecords.values()].filter((item) =>
+        changedSince(item.updatedAt),
+      ),
       appointments: [...store.appointments.values()].filter((item) => changedSince(item.updatedAt)),
       medications: [...store.medications.values()],
       serverTime: new Date().toISOString(),

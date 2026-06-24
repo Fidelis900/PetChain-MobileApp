@@ -1,7 +1,30 @@
-import { getItem, setItem } from './localDB';
+import { executeSql, getItem, setItem } from './localDB';
 import { sendAlertNotification } from './notificationService';
 import syncService, { type SyncAction, type SyncEntityType, type SyncStatus } from './syncService';
 import { networkMonitor } from '../utils/networkMonitor';
+
+// ─── Blockchain anchor queue (SQLite-backed) ──────────────────────────────────
+
+export interface BlockchainQueueItem {
+  id: string;
+  recordId: string;
+  payload: string; // JSON-serialised record payload
+  attempts: number;
+  createdAt: string;
+}
+
+async function initBlockchainQueue(): Promise<void> {
+  await executeSql(`
+    CREATE TABLE IF NOT EXISTS blockchain_anchor_queue (
+      id         TEXT PRIMARY KEY,
+      record_id  TEXT NOT NULL,
+      payload    TEXT NOT NULL,
+      attempts   INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+}
+initBlockchainQueue().catch(() => {});
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -63,6 +86,7 @@ class OfflineQueue {
       if (wasOffline && online) {
         await this.notifyUser('🔄 Back online', 'Syncing your offline changes…');
         await this.processQueue();
+        await this.processBlockchainQueue();
       }
 
       await this.emitStatus();
@@ -145,6 +169,70 @@ class OfflineQueue {
     }
 
     await this.emitStatus();
+  }
+
+  // ── Blockchain anchor queue ───────────────────────────────────────────────
+
+  /**
+   * Queue a medical record hash for Stellar anchoring.
+   * Persists to SQLite so it survives app restarts.
+   * If online, attempts to anchor immediately; otherwise retries on reconnect.
+   */
+  async queueBlockchainAnchor(recordId: string, payload: unknown): Promise<void> {
+    const id = `${recordId}_${Date.now()}`;
+    await executeSql(
+      `INSERT OR REPLACE INTO blockchain_anchor_queue (id, record_id, payload, attempts)
+       VALUES (?, ?, ?, 0)`,
+      [id, recordId, JSON.stringify(payload)],
+    );
+
+    if (this.isOnline) {
+      await this.processBlockchainQueue();
+    } else {
+      await this.notifyUser(
+        '📴 Record saved offline',
+        'Will anchor to blockchain when reconnected.',
+      );
+    }
+  }
+
+  /**
+   * Flush all pending blockchain anchor jobs.
+   * Called automatically on reconnect via initialize().
+   */
+  async processBlockchainQueue(): Promise<void> {
+    const online = await networkMonitor.isOnline();
+    if (!online) return;
+
+    // Lazy import to avoid circular deps and keep mobile bundle lean
+    const { default: apiClient } = await import('./apiClient');
+    const db = (await import('expo-sqlite')).openDatabaseSync('petchain.db');
+
+    const pending = db.getAllSync<BlockchainQueueItem>(
+      `SELECT id, record_id AS recordId, payload, attempts, created_at AS createdAt
+       FROM blockchain_anchor_queue WHERE attempts < 5 ORDER BY created_at ASC`,
+    );
+
+    for (const item of pending) {
+      try {
+        await apiClient.post('/api/anchor', {
+          recordId: item.recordId,
+          payload: JSON.parse(item.payload),
+        });
+        db.runSync(`DELETE FROM blockchain_anchor_queue WHERE id = ?`, [item.id]);
+      } catch {
+        db.runSync(`UPDATE blockchain_anchor_queue SET attempts = attempts + 1 WHERE id = ?`, [
+          item.id,
+        ]);
+      }
+    }
+
+    if (pending.length > 0) {
+      const remaining = db.getAllSync(`SELECT id FROM blockchain_anchor_queue WHERE attempts < 5`);
+      if (remaining.length === 0) {
+        await this.notifyUser('✅ Blockchain sync complete', 'All records anchored to Stellar.');
+      }
+    }
   }
 
   // ── Status ────────────────────────────────────────────────────────────────

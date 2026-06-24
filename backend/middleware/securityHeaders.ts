@@ -10,8 +10,8 @@
  *   applySecurityHeaders(app);
  */
 
-import helmet from 'helmet';
 import type { Express } from 'express';
+import helmet from 'helmet';
 
 const IS_PROD = process.env.NODE_ENV === 'production';
 
@@ -23,7 +23,9 @@ const TRUSTED_ORIGINS: string[] = [
   "'self'",
   'https://api.petchain.app',
   'https://staging.petchain.app',
-  ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()) : []),
+  ...(process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+    : []),
 ];
 
 /**
@@ -82,10 +84,7 @@ export function applySecurityHeaders(app: Express): void {
 
   // Permissions policy — restrict browser feature access
   app.use((_req, res, next) => {
-    res.setHeader(
-      'Permissions-Policy',
-      'camera=(), microphone=(), geolocation=(), payment=()',
-    );
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
     next();
   });
 }

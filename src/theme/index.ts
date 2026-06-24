@@ -1,12 +1,16 @@
 import { darkTheme, lightTheme, navigationDarkTheme, navigationLightTheme } from './colors';
-import { useTheme as useThemePreference } from '../utils/useTheme';
+import { tokens } from './tokens';
+import { useTheme as useThemePreference } from '../context/ThemeContext';
 
 export function useAppTheme() {
-  const { theme } = useThemePreference();
-  return theme === 'dark' ? darkTheme : lightTheme;
+  const { colors } = useThemePreference();
+  return colors;
 }
 
 export function useNavigationTheme() {
   const { theme } = useThemePreference();
   return theme === 'dark' ? navigationDarkTheme : navigationLightTheme;
 }
+
+export { tokens, lightTheme, darkTheme, navigationLightTheme, navigationDarkTheme };
+export { contrastRatio, passesWcagAA } from './contrast';

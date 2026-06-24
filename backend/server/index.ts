@@ -1,54 +1,66 @@
 import http from 'http';
 
-import { createApp } from './app';
+import { createApp, setReadiness } from './app';
+import { checkDatabaseConnection, runMigrations } from '../config/database';
+import apiKeyService from '../services/apiKeyService';
+import logger from '../utils/logger';
 
 const PORT = Number(process.env.PORT) || 3000;
-const app = createApp();
-const server = http.createServer(app);
-
-// ---- Graceful shutdown ---------------------------------------------------
-//
-// When PM2 (or any supervisor) sends SIGINT / SIGTERM it expects in-flight
-// requests to finish within `kill_timeout` before the process is hard-killed.
-// We stop accepting new connections immediately, then wait for the existing
-// ones to drain before exiting.
 
 let isShuttingDown = false;
 
-function shutdown(signal: NodeJS.Signals): void {
+function shutdown(signal: NodeJS.Signals, server: http.Server): void {
   if (isShuttingDown) return;
   isShuttingDown = true;
 
-  console.warn(`[server] Received ${signal} — starting graceful shutdown`);
+  logger.warn(`Received ${signal} — starting graceful shutdown`);
+  setReadiness(false);
 
-  // Stop accepting new connections
   server.close((err) => {
     if (err) {
-      console.error('[server] Error while closing server:', err);
+      logger.error('Error while closing server', { error: err.message });
       process.exit(1);
     }
-    console.warn('[server] All connections drained — exiting cleanly');
+    logger.info('All connections drained — exiting cleanly');
     process.exit(0);
   });
 
-  // Hard-exit fallback: if connections don't drain within 9 s we force quit
-  // (PM2 kill_timeout is 10 s, so this fires just before the SIGKILL)
-  setTimeout(() => {
-    console.error('[server] Graceful shutdown timed out — forcing exit');
+  const shutdownTimer = setTimeout(() => {
+    logger.error('Graceful shutdown timed out — forcing exit');
     process.exit(1);
-  }, 9_000).unref();
+  }, 9_000) as unknown as NodeJS.Timeout;
+  shutdownTimer.unref();
 }
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+async function start(): Promise<void> {
+  await checkDatabaseConnection();
+  logger.info('[server] Database connection verified.');
 
-// ---- Startup -------------------------------------------------------------
+  await runMigrations();
 
-server.listen(PORT, () => {
-  console.warn(`PetChain REST API listening on http://localhost:${PORT}/api`);
-  console.warn(`Health:  http://localhost:${PORT}/api/health`);
-  console.warn(`Ready:   http://localhost:${PORT}/api/ready`);
+  const app = createApp();
+  const server = http.createServer(app);
 
-  // Tell PM2 the process is ready to receive traffic
-  if (process.send) process.send('ready');
+  process.on('SIGTERM', () => shutdown('SIGTERM', server));
+  process.on('SIGINT', () => shutdown('SIGINT', server));
+
+  server.listen(PORT, () => {
+    logger.info(`PetChain REST API listening on http://localhost:${PORT}/api`);
+    logger.info(`Health:  http://localhost:${PORT}/api/health`);
+    logger.info(`Ready:   http://localhost:${PORT}/api/ready`);
+    logger.info(`Admin:   http://localhost:${PORT}/admin/api-keys.html`);
+
+    const rotationInterval = setInterval(
+      () => apiKeyService.processRotationExpiry(),
+      60_000,
+    ) as unknown as NodeJS.Timeout;
+    rotationInterval.unref();
+
+    if (process.send) process.send('ready');
+  });
+}
+
+start().catch((err) => {
+  logger.error('[server] Startup failed:', err);
+  process.exit(1);
 });

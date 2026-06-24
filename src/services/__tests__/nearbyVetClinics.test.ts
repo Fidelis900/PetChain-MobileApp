@@ -47,7 +47,7 @@ const LON = -74.006;
 describe('getNearbyVetClinics — mock fallback (no API key)', () => {
   beforeEach(() => {
     // Ensure no API key so we always hit the mock path
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     (require('../../config').default as { googlePlaces: { apiKey: string } }).googlePlaces.apiKey =
       '';
     jest.clearAllMocks();
@@ -85,7 +85,6 @@ describe('getNearbyVetClinics — mock fallback (no API key)', () => {
 // ─── getNearbyVetClinics — Google Places API path ─────────────────────────────
 
 describe('getNearbyVetClinics — Google Places API path', () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const cfg = require('../../config').default as { googlePlaces: { apiKey: string } };
 
   beforeEach(() => {

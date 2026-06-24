@@ -14,11 +14,7 @@ export type EngagementEvent =
   | 'error_occurred'
   | 'payment_failed';
 
-const POSITIVE_EVENTS: EngagementEvent[] = [
-  'sos_success',
-  'record_saved',
-  'appointment_completed',
-];
+const POSITIVE_EVENTS: EngagementEvent[] = ['sos_success', 'record_saved', 'appointment_completed'];
 
 export const NEGATIVE_EVENTS: EngagementEvent[] = ['error_occurred', 'payment_failed'];
 
