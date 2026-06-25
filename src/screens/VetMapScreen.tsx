@@ -10,7 +10,8 @@
  *  - Real-time distance + estimated travel time per marker
  *  - Filter bar: All | General | Emergency | Specialist | Pharmacy
  *  - Offline banner when the device has no connectivity
- *  - Bottom sheet clinic detail card with Call + Navigate actions
+ *  - Bottom sheet clinic detail card with Call + Navigate + Book Appointment actions
+ *  - Next 3 available slots fetched from appointmentService on pin tap
  *  - Integrates with native maps for turn-by-turn navigation
  */
 
@@ -30,6 +31,7 @@ import {
 } from 'react-native';
 import MapView, { Callout, Marker, UrlTile, type Region } from 'react-native-maps';
 
+import { getAvailability } from '../services/appointmentService';
 import mapService, { type ClinicType, type Location, type VetClinic } from '../services/mapService';
 import { networkMonitor } from '../utils/networkMonitor';
 
@@ -37,11 +39,6 @@ import { networkMonitor } from '../utils/networkMonitor';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-/**
- * OpenStreetMap tile URL template.
- * For production, replace with a self-hosted or commercial tile server that
- * supports offline caching (e.g. Mapbox, Maptiler).
- */
 const OSM_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
 const FILTER_OPTIONS: { label: string; value: ClinicType | 'all' }[] = [
@@ -68,9 +65,27 @@ const TYPE_ICONS: Record<ClinicType, string> = {
 
 const DEFAULT_DELTA = 0.05;
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface Props {
+  onBookAppointment?: (vetName: string, date: string, time: string) => void;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function todayStr(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function tomorrowStr(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
-const VetMapScreen: React.FC = () => {
+const VetMapScreen: React.FC<Props> = ({ onBookAppointment }) => {
   const mapRef = useRef<MapView>(null);
 
   const [userLocation, setUserLocation] = useState<Location | null>(null);
@@ -82,6 +97,10 @@ const VetMapScreen: React.FC = () => {
   const [isOffline, setIsOffline] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
 
+  // Availability slots for selected clinic
+  const [sheetSlots, setSheetSlots] = useState<{ date: string; time: string }[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+
   // Bottom sheet slide-up animation
   const sheetAnim = useRef(new Animated.Value(0)).current;
 
@@ -91,7 +110,6 @@ const VetMapScreen: React.FC = () => {
     const unsubscribe = networkMonitor.onNetworkChange((online) => {
       setIsOffline(!online);
       if (online && userLocation) {
-        // Trigger a background sync when connectivity is restored
         void mapService.syncClinics().then(() => loadClinics(userLocation, activeFilter));
       }
     });
@@ -110,7 +128,6 @@ const VetMapScreen: React.FC = () => {
   const bootstrap = async () => {
     setLoading(true);
     try {
-      // Kick off a background POI sync (non-blocking)
       void mapService.initialSync();
 
       const location = await mapService.getCurrentLocation();
@@ -122,7 +139,6 @@ const VetMapScreen: React.FC = () => {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to load map.';
       Alert.alert('Map Error', msg);
-      // Still try to show cached data without a location
       const cached = await mapService.getCachedClinics();
       setClinics(cached);
     } finally {
@@ -150,11 +166,42 @@ const VetMapScreen: React.FC = () => {
     }
   };
 
+  // ── Availability slots ──────────────────────────────────────────────────────
+
+  const loadClinicSlots = async (clinic: VetClinic) => {
+    setSlotsLoading(true);
+    setSheetSlots([]);
+    try {
+      const [today, tomorrow] = await Promise.allSettled([
+        getAvailability(clinic.id, todayStr()),
+        getAvailability(clinic.id, tomorrowStr()),
+      ]);
+
+      const combined: { date: string; time: string }[] = [];
+      if (today.status === 'fulfilled') {
+        combined.push(
+          ...today.value.availableSlots.map((t) => ({ date: today.value.date, time: t })),
+        );
+      }
+      if (tomorrow.status === 'fulfilled') {
+        combined.push(
+          ...tomorrow.value.availableSlots.map((t) => ({ date: tomorrow.value.date, time: t })),
+        );
+      }
+      setSheetSlots(combined.slice(0, 3));
+    } catch {
+      setSheetSlots([]);
+    } finally {
+      setSlotsLoading(false);
+    }
+  };
+
   // ── Map interactions ────────────────────────────────────────────────────────
 
   const handleMarkerPress = (clinic: VetClinic) => {
     setSelectedClinic(clinic);
     animateSheet(true);
+    void loadClinicSlots(clinic);
   };
 
   const handleMapPress = () => {
@@ -203,6 +250,28 @@ const VetMapScreen: React.FC = () => {
 
   const handleNavigate = (clinic: VetClinic) => {
     mapService.navigateToClinic(clinic);
+  };
+
+  const handleBookSlot = (clinic: VetClinic, date: string, time: string) => {
+    if (onBookAppointment) {
+      setSelectedClinic(null);
+      animateSheet(false);
+      onBookAppointment(clinic.name, date, time);
+    } else {
+      Alert.alert('Book Appointment', `Book with ${clinic.name} on ${date} at ${time}?`, [
+        { text: 'OK' },
+      ]);
+    }
+  };
+
+  const handleBookPress = (clinic: VetClinic) => {
+    if (sheetSlots.length === 0) {
+      if (onBookAppointment) {
+        setSelectedClinic(null);
+        animateSheet(false);
+        onBookAppointment(clinic.name, todayStr(), '');
+      }
+    }
   };
 
   // ── Derived region ──────────────────────────────────────────────────────────
@@ -262,6 +331,20 @@ const VetMapScreen: React.FC = () => {
     );
   };
 
+  const renderSlot = (slot: { date: string; time: string }, clinic: VetClinic) => (
+    <TouchableOpacity
+      key={`${slot.date}-${slot.time}`}
+      style={styles.slotChip}
+      onPress={() => handleBookSlot(clinic, slot.date, slot.time)}
+      accessibilityLabel={`Book slot ${slot.date} at ${slot.time}`}
+    >
+      <Text style={styles.slotDate}>
+        {new Date(slot.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+      </Text>
+      <Text style={styles.slotTime}>{slot.time}</Text>
+    </TouchableOpacity>
+  );
+
   const sheetTranslateY = sheetAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [300, 0],
@@ -301,10 +384,7 @@ const VetMapScreen: React.FC = () => {
           onPress={handleMapPress}
           accessibilityLabel="Vet clinic map"
         >
-          {/* OSM tile overlay — cached by the OS WebView tile cache */}
           <UrlTile urlTemplate={OSM_TILE_URL} maximumZ={19} flipY={false} offlineMode={isOffline} />
-
-          {/* Clinic markers */}
           {clinics.map(renderMarker)}
         </MapView>
       ) : (
@@ -422,6 +502,20 @@ const VetMapScreen: React.FC = () => {
             </View>
           )}
 
+          {/* Available slots */}
+          <View style={styles.slotsSection}>
+            <Text style={styles.slotsSectionTitle}>Next available</Text>
+            {slotsLoading ? (
+              <ActivityIndicator size="small" color="#4CAF50" style={{ marginVertical: 8 }} />
+            ) : sheetSlots.length > 0 ? (
+              <View style={styles.slotsRow}>
+                {sheetSlots.map((slot) => renderSlot(slot, selectedClinic))}
+              </View>
+            ) : (
+              <Text style={styles.noSlotsText}>No upcoming slots available</Text>
+            )}
+          </View>
+
           {/* Action buttons */}
           <View style={styles.sheetActions}>
             <TouchableOpacity
@@ -442,6 +536,15 @@ const VetMapScreen: React.FC = () => {
               <Text style={[styles.sheetActionText, styles.navActionText]}>Directions</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Book appointment button */}
+          <TouchableOpacity
+            style={styles.bookBtn}
+            onPress={() => handleBookPress(selectedClinic)}
+            accessibilityLabel={`Book appointment at ${selectedClinic.name}`}
+          >
+            <Text style={styles.bookBtnText}>📅 Book Appointment</Text>
+          </TouchableOpacity>
         </Animated.View>
       )}
 
@@ -472,6 +575,15 @@ const VetMapScreen: React.FC = () => {
                     accessibilityLabel={`Navigate to ${item.name}`}
                   >
                     <Text style={styles.fallbackActionText}>🗺️ Directions</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (onBookAppointment) onBookAppointment(item.name, todayStr(), '');
+                    }}
+                    style={[styles.fallbackActionBtn, styles.fallbackBookBtn]}
+                    accessibilityLabel={`Book appointment at ${item.name}`}
+                  >
+                    <Text style={styles.fallbackBookText}>📅 Book</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -589,7 +701,7 @@ const styles = StyleSheet.create({
   // Recenter button
   recenterBtn: {
     position: 'absolute',
-    bottom: 180,
+    bottom: 220,
     right: 16,
     width: 48,
     height: 48,
@@ -613,7 +725,7 @@ const styles = StyleSheet.create({
   // Count badge
   countBadge: {
     position: 'absolute',
-    bottom: 180,
+    bottom: 220,
     left: 16,
     backgroundColor: 'rgba(0,0,0,0.65)',
     paddingHorizontal: 12,
@@ -671,25 +783,52 @@ const styles = StyleSheet.create({
   sheetCloseBtn: { padding: 4 },
   sheetCloseText: { fontSize: 16, color: '#999' },
   sheetAddress: { fontSize: 13, color: '#666', marginBottom: 12 },
-  sheetMetaRow: { flexDirection: 'row', gap: 16, marginBottom: 16 },
+  sheetMetaRow: { flexDirection: 'row', gap: 16, marginBottom: 12 },
   sheetMetaItem: { alignItems: 'center' },
   sheetMetaLabel: { fontSize: 11, color: '#999', marginBottom: 2 },
   sheetMetaValue: { fontSize: 15, fontWeight: '700', color: '#1a1a1a' },
-  sheetActions: { flexDirection: 'row', gap: 12 },
+
+  // Slots
+  slotsSection: { marginBottom: 12 },
+  slotsSectionTitle: { fontSize: 12, color: '#999', fontWeight: '600', marginBottom: 8 },
+  slotsRow: { flexDirection: 'row', gap: 8 },
+  slotChip: {
+    flex: 1,
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1,
+    borderColor: '#4CAF50',
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  slotDate: { fontSize: 11, color: '#2d6a4f', fontWeight: '600' },
+  slotTime: { fontSize: 13, color: '#1a1a1a', fontWeight: '700' },
+  noSlotsText: { fontSize: 12, color: '#999' },
+
+  sheetActions: { flexDirection: 'row', gap: 12, marginBottom: 10 },
   sheetActionBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 13,
+    paddingVertical: 11,
     borderRadius: 12,
     gap: 6,
   },
   callActionBtn: { backgroundColor: '#e8f5e9', borderWidth: 1, borderColor: '#c6f6d5' },
   navActionBtn: { backgroundColor: '#4CAF50' },
-  sheetActionIcon: { fontSize: 18 },
-  sheetActionText: { fontSize: 15, fontWeight: '600', color: '#2d6a4f' },
+  sheetActionIcon: { fontSize: 16 },
+  sheetActionText: { fontSize: 14, fontWeight: '600', color: '#2d6a4f' },
   navActionText: { color: '#fff' },
+
+  // Book button
+  bookBtn: {
+    backgroundColor: '#007AFF',
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  bookBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
 
   // Fallback list (no map)
   fallbackList: { flex: 1, padding: 16 },
@@ -721,6 +860,11 @@ const styles = StyleSheet.create({
     borderColor: '#c6f6d5',
   },
   fallbackActionText: { fontSize: 13, color: '#2d6a4f', fontWeight: '600' },
+  fallbackBookBtn: { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' },
+  fallbackBookText: { fontSize: 13, color: '#1D4ED8', fontWeight: '600' },
 });
+
+// Suppress unused import warning — SCREEN_WIDTH is available for responsive calculations
+void SCREEN_WIDTH;
 
 export default VetMapScreen;

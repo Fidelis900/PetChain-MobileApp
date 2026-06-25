@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import { useRoute } from '@react-navigation/native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -16,6 +17,7 @@ import { v4 as uuid } from 'uuid';
 import { SkeletonCard } from '../components/SkeletonCard';
 import { useMinimumLoadingTime } from '../hooks/useMinimumLoadingTime';
 import type { Medication } from '../models/Medication';
+import type { MainTabParamList } from '../navigation/types';
 import {
   AppointmentStatus,
   type Appointment,
@@ -58,6 +60,15 @@ const EMPTY_FORM = {
 const AppointmentScreen: React.FC = () => {
   useSecureScreen();
 
+  const route = useRoute<{
+    key: string;
+    name: string;
+    params?: MainTabParamList['Appointments'];
+  }>();
+  const routeParams = route.params;
+
+  const prefillApplied = useRef(false);
+
   const [tab, setTab] = useState<Tab>('upcoming');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [medications, setMedications] = useState<Medication[]>([]);
@@ -89,6 +100,29 @@ const AppointmentScreen: React.FC = () => {
       setIsLoading(false);
     }
   }, []);
+
+  // Pre-fill booking form when navigated from VetMapScreen
+  useEffect(() => {
+    if (prefillApplied.current) return;
+    if (!routeParams?.openBooking) return;
+    prefillApplied.current = true;
+
+    const { initialVetName, initialDate, initialTime } = routeParams;
+    const dateTimeStr =
+      initialDate && initialTime
+        ? `${initialDate}T${initialTime}`
+        : initialDate
+          ? `${initialDate}T09:00`
+          : '';
+
+    setForm((prev) => ({
+      ...prev,
+      vetName: initialVetName ?? prev.vetName,
+      title: initialVetName ? `Appointment at ${initialVetName}` : prev.title,
+      date: dateTimeStr || prev.date,
+    }));
+    setBookingVisible(true);
+  }, [routeParams]);
 
   useEffect(() => {
     void load();
@@ -722,7 +756,12 @@ const styles = StyleSheet.create({
   warningBannerTitleRed: { color: '#991B1B' },
   warningBannerTitleYellow: { color: '#92400E' },
   warningBannerText: { fontSize: 13, color: '#6B7280', marginBottom: 8 },
-  conflictDetail: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.1)' },
+  conflictDetail: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.1)',
+  },
   conflictDetailLabel: { fontSize: 12, fontWeight: '600', color: '#374151', marginBottom: 4 },
   conflictDetailValue: { fontSize: 12, color: '#6B7280' },
   detailRow: {

@@ -47,6 +47,7 @@ import TelemedicineScreen from '../screens/TelemedicineScreen';
 import TravelCertificateScreen from '../screens/TravelCertificateScreen';
 import TrustlineScreen from '../screens/TrustlineScreen';
 import VaccinationScreen from '../screens/VaccinationScreen';
+import VetMapScreen from '../screens/VetMapScreen';
 import { extractDeepLinkParams } from '../services/notificationService';
 import performance from '../utils/performance';
 
@@ -177,6 +178,20 @@ function PetNavigator() {
       </PetStack.Screen>
       <PetStack.Screen name="NearbyVet" options={{ title: 'Nearby Vet Clinics' }}>
         {({ navigation }) => <NearbyVetScreen onBack={() => navigation.goBack()} />}
+      </PetStack.Screen>
+      <PetStack.Screen name="VetMap" options={{ title: 'Vet Map' }}>
+        {({ navigation }) => (
+          <VetMapScreen
+            onBookAppointment={(vetName, date, time) => {
+              navigation.getParent()?.navigate('Appointments', {
+                initialVetName: vetName,
+                initialDate: date,
+                initialTime: time,
+                openBooking: true,
+              });
+            }}
+          />
+        )}
       </PetStack.Screen>
       <PetStack.Screen name="ReconciliationReport" options={{ title: 'Record Reconciliation' }}>
         {({ navigation }) => <ReconciliationScreen onBack={() => navigation.goBack()} />}
