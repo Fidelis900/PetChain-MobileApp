@@ -209,7 +209,7 @@ const styles = StyleSheet.create({
   progressBar: {
     position: 'absolute',
     bottom: 0,
-    left: 0,
+    start: 0,
     height: 6,
     backgroundColor: '#feb2b2', // Light red for progress
   },

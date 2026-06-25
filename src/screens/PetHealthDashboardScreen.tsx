@@ -110,22 +110,25 @@ function appointmentTypeLabel(type: string): string {
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
 
-function SectionHeader({ title, icon }: { title: string; icon: string }) {
+// Memoized because it receives simple scalar props and is rendered multiple times
+const SectionHeader = React.memo(function SectionHeader({ title, icon }: { title: string; icon: string }) {
   return (
     <View style={styles.sectionHeader}>
       <Text style={styles.sectionIcon}>{icon}</Text>
       <Text style={styles.sectionTitle}>{title}</Text>
     </View>
   );
-}
+});
 
+// Note: Card is not memoized because it accepts React.ReactNode children, which are always new objects on parent render, making React.memo ineffective here.
 function Card({ children }: { children: React.ReactNode }) {
   return <View style={styles.card}>{children}</View>;
 }
 
-function EmptyState({ message }: { message: string }) {
+// Memoized to avoid re-rendering when parent re-renders due to other state changes
+const EmptyState = React.memo(function EmptyState({ message }: { message: string }) {
   return <Text style={styles.emptyText}>{message}</Text>;
-}
+});
 
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
@@ -203,10 +206,12 @@ const PetHealthDashboardScreen: React.FC<Props> = ({ petId, petName, onBack, onO
     void load();
   }, [load]);
 
-  const onRefresh = () => {
+  // Stabilized with useCallback to prevent re-creating this function on every render,
+  // which would cause the RefreshControl to see a new prop unnecessarily
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
     void load();
-  };
+  }, [load]);
 
   const handleExportChart = useCallback(async () => {
     try {
