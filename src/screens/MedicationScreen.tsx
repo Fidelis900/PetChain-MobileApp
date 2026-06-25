@@ -297,6 +297,11 @@ const MedicationScreen: React.FC = () => {
           <View style={styles.cardHeader}>
             <Text style={styles.medName}>{item.name}</Text>
             <View style={styles.cardActions}>
+              {item.pendingApproval && (
+                <View style={styles.pendingVetReviewBadge}>
+                  <Text style={styles.pendingVetReviewText}>⏳ Pending vet review</Text>
+                </View>
+              )}
               {refillStatus !== 'unknown' && (
                 <View style={refillBadgeStyle}>
                   <Text style={styles.refillBadgeText}>{refillBadgeLabel[refillStatus]}</Text>
@@ -843,6 +848,14 @@ const styles = StyleSheet.create({
   refillBadgeWarning: { backgroundColor: '#fff8e1' },
   refillBadgeUrgent: { backgroundColor: '#fdecea' },
   refillBadgeText: { fontSize: 11, fontWeight: '700' },
+  pendingVetReviewBadge: {
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginRight: 4,
+    backgroundColor: '#FFF3E0',
+  },
+  pendingVetReviewText: { fontSize: 11, fontWeight: '700', color: '#E65100' },
   logBtn: {
     flex: 1,
     backgroundColor: '#4CAF50',
