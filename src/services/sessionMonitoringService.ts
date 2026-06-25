@@ -17,6 +17,7 @@ const STORAGE_KEYS = {
   CURRENT_SESSION: '@session_monitoring:current_session',
   PENDING_EVENTS: '@session_monitoring:pending_events',
   CRASH_HISTORY: '@session_monitoring:crash_history',
+  LAST_BIOMETRIC_CHECK: '@session_monitoring:last_biometric_check',
 } as const;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -533,6 +534,42 @@ class SessionMonitoringService {
     } catch {
       // Non-fatal — session extension failure is not a crash
     }
+  }
+
+  // ── Biometric check timestamp tracking ───────────────────────────────────
+
+  /**
+   * Record the timestamp of the last successful biometric authentication.
+   * Used by screens to determine if re-authentication is needed.
+   */
+  async setLastBiometricCheck(): Promise<void> {
+    const now = Date.now().toString();
+    await AsyncStorage.setItem(STORAGE_KEYS.LAST_BIOMETRIC_CHECK, now);
+  }
+
+  /**
+   * Get the timestamp of the last biometric authentication.
+   * Returns the timestamp in ms since epoch, or 0 if never checked.
+   */
+  async getLastBiometricCheck(): Promise<number> {
+    try {
+      const raw = await AsyncStorage.getItem(STORAGE_KEYS.LAST_BIOMETRIC_CHECK);
+      if (!raw) return 0;
+      const parsed = parseInt(raw, 10);
+      return Number.isFinite(parsed) ? parsed : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Check if the last biometric check is older than the given duration.
+   * @param durationMs - Duration in milliseconds (defaults to 5 minutes).
+   */
+  async isBiometricCheckExpired(durationMs = 5 * 60 * 1000): Promise<boolean> {
+    const lastCheck = await this.getLastBiometricCheck();
+    if (lastCheck === 0) return true; // Never checked
+    return Date.now() - lastCheck > durationMs;
   }
 
   // ── Accessors ──────────────────────────────────────────────────────────────
