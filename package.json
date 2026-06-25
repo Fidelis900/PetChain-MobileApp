@@ -41,6 +41,7 @@
     "prepare": "husky",
     "codegen": "graphql-codegen --config codegen.ts",
     "migrations:validate": "tsx scripts/validate-migrations.ts",
+    "test:migrations": "tsx scripts/test-migrations.ts",
     "migrate": "ts-node backend/src/db/migrate.ts",
     "seed": "ts-node backend/seeds/index.ts",
     "seed:dev": "ts-node backend/seeds/index.ts --owners 5 --vets 3 --pets 2 --records 3 --appointments 2 --medications 1",
