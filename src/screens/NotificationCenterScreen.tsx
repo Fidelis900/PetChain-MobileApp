@@ -9,7 +9,7 @@
  *  - Deep-link navigation on item press
  */
 import { useNavigation } from '@react-navigation/native';
-import React, { useCallback, useEffect, useReducer, useRef } from 'react';
+import React, { useCallback, useEffect, useReducer, useRef, useState, useMemo } from 'react';
 import {
   Alert,
   FlatList,
@@ -18,7 +18,10 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Switch,
+  Image,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import NotificationItem, { resolveNavPayload } from '../components/NotificationItem';
 import { SkeletonCard } from '../components/SkeletonCard';
@@ -34,6 +37,11 @@ import {
   type AppNotification,
   type NotificationFilter,
 } from '../services/notificationStore';
+import { getAllPets, type Pet } from '../services/petService';
+
+type ListItem = 
+  | { type: 'header'; id: string; petId: string; unreadCount: number; isCollapsed: boolean }
+  | { type: 'notification'; id: string; notification: AppNotification };
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -148,16 +156,87 @@ export default function NotificationCenterScreen() {
   const navigation = useNavigation<{ navigate: (screen: string, params?: unknown) => void }>();
   const isMounted = useRef(true);
 
+  const [groupByPet, setGroupByPet] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const [pets, setPets] = useState<Record<string, Pet>>({});
+
   // Enforce minimum 300ms display for skeleton
   const displayLoading = useMinimumLoadingTime(state.loading && !state.refreshing, {
     minLoadingTime: 300,
   });
 
   useEffect(() => {
+    AsyncStorage.getItem('notification_group_by_pet').then(val => {
+      if (val !== null && isMounted.current) setGroupByPet(val === 'true');
+    }).catch(() => {});
+    
+    getAllPets().then((petList) => {
+      if (!isMounted.current) return;
+      const map: Record<string, Pet> = {};
+      petList.forEach(p => map[p.id] = p);
+      setPets(map);
+    }).catch(() => {});
+
     return () => {
       isMounted.current = false;
     };
   }, []);
+
+  const handleToggleGroup = useCallback((val: boolean) => {
+    setGroupByPet(val);
+    AsyncStorage.setItem('notification_group_by_pet', val.toString()).catch(() => {});
+  }, []);
+
+  const toggleSection = useCallback((sectionId: string) => {
+    setCollapsedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) next.delete(sectionId);
+      else next.add(sectionId);
+      return next;
+    });
+  }, []);
+
+  const listData = useMemo<ListItem[]>(() => {
+    if (!groupByPet) {
+      return state.notifications.map(n => ({ type: 'notification', id: n.id, notification: n }));
+    }
+
+    const groups: Record<string, AppNotification[]> = { General: [] };
+    state.notifications.forEach(n => {
+      const petId = (n.metadata?.petId || n.navPayload?.params?.petId) as string | undefined;
+      const key = petId || 'General';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(n);
+    });
+
+    const flatList: ListItem[] = [];
+    
+    const petIds = Object.keys(groups).filter(k => k !== 'General');
+    petIds.forEach(petId => {
+      const notifs = groups[petId];
+      if (notifs.length === 0) return;
+      
+      const unreadCount = notifs.filter(n => !n.isRead).length;
+      const isCollapsed = collapsedSections.has(petId);
+      flatList.push({ type: 'header', id: `header-${petId}`, petId, unreadCount, isCollapsed });
+      
+      if (!isCollapsed) {
+        notifs.forEach(n => flatList.push({ type: 'notification', id: n.id, notification: n }));
+      }
+    });
+
+    if (groups.General.length > 0) {
+      const unreadCount = groups.General.filter(n => !n.isRead).length;
+      const isCollapsed = collapsedSections.has('General');
+      flatList.push({ type: 'header', id: 'header-General', petId: 'General', unreadCount, isCollapsed });
+      
+      if (!isCollapsed) {
+        groups.General.forEach(n => flatList.push({ type: 'notification', id: n.id, notification: n }));
+      }
+    }
+
+    return flatList;
+  }, [state.notifications, groupByPet, collapsedSections]);
 
   // ── Data loading ────────────────────────────────────────────────────────────
 
@@ -269,19 +348,51 @@ export default function NotificationCenterScreen() {
   // ── Render helpers ──────────────────────────────────────────────────────────
 
   const renderItem = useCallback(
-    ({ item }: { item: AppNotification }) => (
-      <NotificationItem
-        notification={item}
-        onPress={handleItemPress}
-        onLongPress={handleItemLongPress}
-        style={state.selected.has(item.id) ? styles.selectedItem : undefined}
-        testID={`notification-item-${item.id}`}
-      />
-    ),
-    [handleItemPress, handleItemLongPress, state.selected],
+    ({ item }: { item: ListItem }) => {
+      if (item.type === 'header') {
+        const isGeneral = item.petId === 'General';
+        const pet = isGeneral ? null : pets[item.petId];
+        const name = isGeneral ? 'General' : pet?.name || 'Unknown Pet';
+        
+        return (
+          <TouchableOpacity 
+            style={styles.sectionHeader} 
+            onPress={() => toggleSection(item.petId)}
+            activeOpacity={0.7}
+          >
+            {isGeneral || !pet?.photoUrl ? (
+              <View style={styles.sectionIconFallback}>
+                <Text style={{fontSize: 12}}>{isGeneral ? '📌' : '🐾'}</Text>
+              </View>
+            ) : (
+              <Image source={{ uri: pet.photoUrl }} style={styles.sectionAvatar} />
+            )}
+            <Text style={styles.sectionTitle}>{name}</Text>
+            {item.unreadCount > 0 && (
+              <View style={styles.sectionBadge}>
+                <Text style={styles.sectionBadgeText}>{item.unreadCount}</Text>
+              </View>
+            )}
+            <Text style={styles.sectionToggle}>{item.isCollapsed ? '▲' : '▼'}</Text>
+          </TouchableOpacity>
+        );
+      }
+
+      const notif = item.notification;
+      return (
+        <NotificationItem
+          notification={notif}
+          onPress={handleItemPress}
+          onLongPress={handleItemLongPress}
+          style={state.selected.has(notif.id) ? styles.selectedItem : undefined}
+          testID={`notification-item-${notif.id}`}
+        />
+      );
+    },
+    [handleItemPress, handleItemLongPress, state.selected, pets, toggleSection],
   );
 
-  const keyExtractor = useCallback((item: AppNotification) => item.id, []);
+  const keyExtractor = useCallback((item: ListItem) => item.id, []);
 
   const hasSelection = state.selected.size > 0;
   const hasUnread = state.notifications.some((n) => !n.isRead);
@@ -291,31 +402,41 @@ export default function NotificationCenterScreen() {
   return (
     <View style={styles.container} testID="notification-center-screen">
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle} accessibilityRole="header">
-          Notifications
-          {state.unreadCount > 0 ? ` (${state.unreadCount})` : ''}
-        </Text>
-        <View style={styles.headerActions}>
-          {hasUnread && !hasSelection && (
-            <TouchableOpacity
-              onPress={handleMarkAllRead}
-              accessibilityLabel="Mark all as read"
-              testID="mark-all-read-btn"
-            >
-              <Text style={styles.actionText}>Mark all read</Text>
-            </TouchableOpacity>
-          )}
-          {state.notifications.length > 0 && !hasSelection && (
-            <TouchableOpacity
-              onPress={handleDeleteAll}
-              accessibilityLabel="Delete all notifications"
-              testID="delete-all-btn"
-              style={styles.actionSpacer}
-            >
-              <Text style={[styles.actionText, styles.destructiveText]}>Clear all</Text>
-            </TouchableOpacity>
-          )}
+      <View style={styles.headerContainer}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle} accessibilityRole="header">
+            Notifications
+            {state.unreadCount > 0 ? ` (${state.unreadCount})` : ''}
+          </Text>
+          <View style={styles.headerActions}>
+            {hasUnread && !hasSelection && (
+              <TouchableOpacity
+                onPress={handleMarkAllRead}
+                accessibilityLabel="Mark all as read"
+                testID="mark-all-read-btn"
+              >
+                <Text style={styles.actionText}>Mark all read</Text>
+              </TouchableOpacity>
+            )}
+            {state.notifications.length > 0 && !hasSelection && (
+              <TouchableOpacity
+                onPress={handleDeleteAll}
+                accessibilityLabel="Delete all notifications"
+                testID="delete-all-btn"
+                style={styles.actionSpacer}
+              >
+                <Text style={[styles.actionText, styles.destructiveText]}>Clear all</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+        <View style={styles.toggleRow}>
+          <Text style={styles.toggleLabel}>Group by Pet</Text>
+          <Switch 
+            value={groupByPet} 
+            onValueChange={handleToggleGroup}
+            trackColor={{ false: '#D1D5DB', true: '#4CAF50' }}
+          />
         </View>
       </View>
 
@@ -386,7 +507,7 @@ export default function NotificationCenterScreen() {
         </View>
       ) : (
         <FlatList
-          data={state.notifications}
+          data={listData}
           renderItem={renderItem}
           keyExtractor={keyExtractor}
           refreshControl={
@@ -427,15 +548,76 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F5F7FA',
   },
+  headerContainer: {
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#D1D5DB',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  toggleLabel: {
+    fontSize: 14,
+    color: '#4B5563',
+    fontWeight: '500',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#F3F4F6',
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#D1D5DB',
+  },
+  sectionAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    marginRight: 8,
+    backgroundColor: '#E5E7EB',
+  },
+  sectionIconFallback: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    marginRight: 8,
+    backgroundColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    flex: 1,
+  },
+  sectionBadge: {
+    backgroundColor: '#4CAF50',
+    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginRight: 8,
+  },
+  sectionBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  sectionToggle: {
+    fontSize: 12,
+    color: '#6B7280',
   },
   headerTitle: {
     fontSize: 18,
