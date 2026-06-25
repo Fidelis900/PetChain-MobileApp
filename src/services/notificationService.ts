@@ -43,6 +43,7 @@ export interface NotificationPreferences {
   medicationReminders: boolean;
   appointmentReminders: boolean;
   vaccinationAlerts: boolean;
+  marketingNotifications: boolean;
   reminderLeadTimeMinutes: number;
   soundEnabled: boolean;
   vibrationEnabled: boolean;
@@ -135,6 +136,7 @@ const DEFAULT_PREFS: NotificationPreferences = {
   medicationReminders: true,
   appointmentReminders: true,
   vaccinationAlerts: true,
+  marketingNotifications: false,
   reminderLeadTimeMinutes: 60,
   soundEnabled: true,
   vibrationEnabled: true,
